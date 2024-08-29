@@ -39,8 +39,14 @@ export function Todo() {
   const [newTodo, setNewTodo] = useState("")
   const { name, handleNameUpdate } = useName(); // Destructure name and handleNameUpdate from the context
   const [ userName, setUserName] = useState(name);
+  const nameRef = useRef(name); // Ref to hold the current name
 
   const [isEditingName, setIsEditingName] = useState(false)
+
+  useEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+
   const handleUserNameEdit = () => {
     setIsEditingName(true)
   }
@@ -83,7 +89,7 @@ export function Todo() {
   const detectTask = async (context: HighlightContext) => {
     console.log("Context", context);
     const system_prompt = `The user will provide his/her full name followed by the OCR content of their Slack window. Looking at the slack conversations, detect if there is any task that the user has to complete that needs to be added to his/her TODO list. If there is no task detected for the current user, just output "No task", without any other explanations. If a task is detected, start your reply with the prefix "Task detected :" followed by a short single line item that can added to my TODO list. No other explanation is needed.`;
-    const user_prompt = "My name is Karthick. Here is my OCR : " + context.environment.ocrScreenContents;
+    const user_prompt = "My name is " + nameRef.current +  ".\nHere is my OCR : " + context.environment.ocrScreenContents;
     const grammar = `
       root ::= ("No task" | "Task detected : " single-line)
       single-line ::= [^\n.]+ ("." | "\n")
