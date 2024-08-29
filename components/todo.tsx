@@ -30,7 +30,6 @@ export interface Task {
   id: string;
   text: string;
   completed: boolean;
-  metadata: any;
 }
 
 export function Todo() {
@@ -61,7 +60,7 @@ export function Todo() {
   const loadTasks = async () => {
     const tasks = await Highlight.vectorDB.getAllItems(tableName);
     // tasks is just a string array, convert it to Task[]
-    const taskObjects = tasks.map((task: Task, index: number) => {
+    const taskObjects = tasks.map((task, index: number) => {
       return { id: task.id, text: task.text, completed: task.metadata.completed || false };
     });
     setTodos(taskObjects);
@@ -120,7 +119,7 @@ export function Todo() {
       // Check if it is slack
       if (context.url?.includes("app.slack.com") || context.appName === "Slack") {
         const now = Date.now();
-        if (now - lastCallTime.current >= 10000) { // 30 seconds
+        if (now - lastCallTime.current >= 30000) { // 30 seconds
           lastCallTime.current = now;
           console.log("Slack is open");
           const context = await Highlight.user.getContext(true)
