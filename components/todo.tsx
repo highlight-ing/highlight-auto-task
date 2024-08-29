@@ -122,7 +122,7 @@ export function Todo() {
         if (now - lastCallTime.current >= 30000) { // 30 seconds
           lastCallTime.current = now;
           console.log("Slack is open");
-          const context = await Highlight.user.getContext(true)
+          const context = await Highlight.user.getContext()
           const task = await detectTask(context);
           console.log(task);
           if (task.startsWith("Task detected : ")) {
@@ -249,7 +249,7 @@ export function Todo() {
   )
 }
 
-function Trash2Icon(props) {
+function Trash2Icon(props: any) {
   return (
     <svg
       {...props}

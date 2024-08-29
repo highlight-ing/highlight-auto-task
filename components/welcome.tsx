@@ -43,7 +43,7 @@ export function Welcome() {
         </p>
         <div className="mt-8">
           <label htmlFor="name" className="block mb-2 text-xl font-semibold text-black">
-            What's your name?
+            What is your name?
           </label>
           <p className="mb-4 text-base text-black">We need to know your name, for detecting the tasks meant for you.</p>
           <div className="flex items-center justify-center">
@@ -95,7 +95,7 @@ export function Welcome() {
   )
 }
 
-function InboxIcon(props) {
+function InboxIcon(props: any) {
   return (
     <svg
       {...props}
@@ -116,7 +116,7 @@ function InboxIcon(props) {
 }
 
 
-function MailIcon(props) {
+function MailIcon(props: any) {
   return (
     <svg
       {...props}
@@ -137,7 +137,7 @@ function MailIcon(props) {
 }
 
 
-function MessageCircleIcon(props) {
+function MessageCircleIcon(props: any) {
   return (
     <svg
       {...props}
@@ -157,7 +157,7 @@ function MessageCircleIcon(props) {
 }
 
 
-function SlackIcon(props) {
+function SlackIcon(props: any) {
   return (
     <svg
       {...props}
