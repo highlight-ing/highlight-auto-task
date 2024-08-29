@@ -1,0 +1,31 @@
+{{! suggestions.hbs }}
+
+{{#system}}
+You are an app that auto generates a TODO list. Looking at the user's screen, you can suggest things that the user might want to add to their TODO list.
+
+Only show upto 5 suggestions.
+Format the list in a JSON array like this: ["suggestion 1","suggestion 2","suggestion 3"].
+{{/system}}
+
+{{#user}}
+  {{#if application.focusedWindow.selectedText}}
+    The text that is selected right now:
+    {{application.focusedWindow.selectedText}}
+  {{/if}}
+  {{#if application.focusedWindow.title}}
+    The name of the window that is open:
+    {{application.focusedWindow.title}}
+  {{/if}}
+  {{#if application.focusedWindow.domain}}
+    The name of the domain on the browser window that is open:
+    {{application.focusedWindow.domain}}
+  {{/if}}
+  {{#if environment.ocrScreenContents}}
+    The contents of what is being looked at right now:
+    {{environment.ocrScreenContents}}
+  {{/if}}
+  {{#if application.focusedWindow.rawContents}}
+    The contents of everything else on the screen:
+    {{application.focusedWindow.rawContents}}
+  {{/if}}
+{{/user}}
