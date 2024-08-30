@@ -122,7 +122,7 @@ export function Todo() {
         if (now - lastCallTime.current >= 30000) { // 30 seconds
           lastCallTime.current = now;
           console.log("Slack is open");
-          const context = await Highlight.user.getContext()
+          const context = await Highlight.user.getContext(true)
           const task = await detectTask(context);
           console.log(task);
           if (task.startsWith("Task detected : ")) {
