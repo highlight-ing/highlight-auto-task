@@ -87,8 +87,87 @@ export function Todo() {
 
   const detectTask = async (context: HighlightContext) => {
     console.log("Context", context);
-    const system_prompt = `The user will provide his/her full name followed by the OCR content of their Slack window. Looking at the slack conversations, detect if there is any task that the user has to complete that needs to be added to his/her TODO list. If there is no task detected for the current user, just output "No task", without any other explanations. If a task is detected, start your reply with the prefix "Task detected :" followed by a short single line item that can added to my TODO list. No other explanation is needed.`;
-    const user_prompt = "My name is " + nameRef.current +  ".\nHere is my OCR : " + context.environment.ocrScreenContents;
+    const system_prompt = `You are a helpful AI assistant designed to analyze email or messaging conversations and detect potential tasks or TODOs for the user.
+    Your goal is to identify a single, most relevant task that the user needs to complete based on the conversation provided.
+
+    Instructions:
+    1. The user will provide a full name followed by an email or messaging conversation seen on their computer screen.
+    2. Analyze the conversation and determine if there's a task the mentioned user needs to complete.
+    3. Consider only explicitly mentioned tasks for the mentioned user.
+    4. If a task is detected, provide a short, single-line description that can be directly added to a todo list.
+    5. The task should be something the user mentioned in the input needs to do, not tasks for other people.
+    6. If no task is detected, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "No task".
+    7. Do not prioritize or categorize the task.
+    8. Do not include any additional information such as due dates or associated people.
+    9. If multiple tasks are present, choose the most relevant or important one.
+    10. Provide only the task description without any additional context or explanation.
+
+    Example input 1:
+    Name of the User : Jim
+    Conversation :
+    Jim 8:26 PM
+    Yes definitely! (
+    When are you leaving and coming back? I'll plan accordingly
+    I'll be back the same day you are
+    Lucas 8:30 PM
+    I am leaving on Sept 4th.
+    Back to office on Sept 16th.
+    Jim 8:35 PM
+    Okay! Noted, will plan accordingly! Thank you!
+
+    Example output:
+    Task detected : Plan travel dates according to Lucas's leave on Sept 4th and return on Sept 16th.
+    
+    Example input 2:
+    Name of the User : Kobey
+    Conversation :
+    Hero 10:15 AM
+    Actually deleted node_modules and doing a fresh install has solved the issue for me too!
+    Kobey 10:16 AM
+    But I had done a fresh install right? So why was mine building up swap
+    Hero 10:17 AM
+    let's me retry today and i'll let you know.
+
+    Example output:
+    No task
+
+    Example input 2:
+    Name of the User : Mia
+    Conversation :
+    → Canvas
+    37
+    # move v
+    + Add a bookmark
+    Olivia :
+    Chest press
+    Yesterday ~
+    Shoulder press
+    Barbell rows
+    Decline press ups
+    5 sets of each until failure
+    Aiden 7:52 PM
+    replied to a thread: I'm awful at remembering to post this but ...
+    Chest shoulder tri at 8am
+    • Cable Press
+    • Cable Fly
+    • Low cable chest fly
+    • Push ups
+    Should Press
+    • Lat Raise
+    • Tricep stuff
+    71:4
+    Today ~
+    Zoe 6:28 AM
+    replied to a thread: Time to catch up from being sick is ...
+    20/15 - 8/29
+    Legs/Abs
+
+    Example output:
+    No task
+
+    Remember, your response should be either "Task detected :" followed by a single-line task description or "No task" if no relevant task is detected for the name of the user mentioned!.
+    `;
+    const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
     const grammar = `
       root ::= ("No task" | "Task detected : " single-line)
       single-line ::= [^\n.]+ ("." | "\n")
