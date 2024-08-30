@@ -131,7 +131,7 @@ export function Todo() {
     Example output:
     No task
 
-    Example input 2:
+    Example input 3:
     Name of the User : Mia
     Conversation :
     → Canvas
