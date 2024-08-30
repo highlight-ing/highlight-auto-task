@@ -177,6 +177,7 @@ export function Todo() {
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative">
         <div className="absolute top-4 right-4 flex items-center space-x-2">
+          <UserIcon className="w-5 h-5" />
           {isEditingName ? (
             <div className="flex items-center">
               <Input
@@ -268,6 +269,26 @@ function Trash2Icon(props: any) {
       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
       <line x1="10" x2="10" y1="11" y2="17" />
       <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  )
+}
+
+function UserIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   )
 }
