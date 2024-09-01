@@ -57,6 +57,10 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
+  .fade-out {
+    transition: opacity 1s ease-out;
+    opacity: 0;
+  }
 }
 
 @layer base {

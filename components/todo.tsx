@@ -23,6 +23,7 @@ import { useEffect, useState, useRef } from "react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 
@@ -30,6 +31,41 @@ export interface Task {
   id: string;
   text: string;
   completed: boolean;
+  fadingOut: boolean;
+}
+
+interface TodoItemProps {
+  todo: Task;
+  onCheckedChange: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete }) => {
+  return (
+    <div
+      className={`flex items-center justify-between bg-muted rounded-md px-3 py-2 ${
+        (todo.completed || todo.fadingOut) ? "line-through text-muted-foreground" : "text-card-foreground"
+      } ${todo.fadingOut ? "fade-out" : ""}`}
+    >
+      <div className="flex items-center">
+        <Checkbox
+          id={`todo-${todo.id}`}
+          checked={todo.completed}
+          className="mr-2"
+          onCheckedChange={() => onCheckedChange(todo.id)}
+        />
+        <label htmlFor={`todo-${todo.id}`}>{todo.text}</label>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => onDelete(todo.id)}
+        className="text-muted-foreground hover:text-card-foreground"
+      >
+        <Trash2Icon className="w-4 h-4" />
+      </Button>
+    </div>
+  );
 }
 
 export function Todo() {
@@ -41,6 +77,9 @@ export function Todo() {
   const nameRef = useRef(name); // Ref to hold the current name
 
   const [isEditingName, setIsEditingName] = useState(false)
+  const [showCompletedTodos, setShowCompletedTodos] = useState(false)
+  const completedTodos = todos.filter((todo) => todo.completed)
+  const incompleteTodos = todos.filter((todo) => !todo.completed)
 
   useEffect(() => {
     nameRef.current = name;
@@ -61,7 +100,7 @@ export function Todo() {
     const tasks = await Highlight.vectorDB.getAllItems(tableName);
     // tasks is just a string array, convert it to Task[]
     const taskObjects = tasks.map((task, index: number) => {
-      return { id: task.id, text: task.text, completed: task.metadata.completed || false };
+      return { id: task.id, text: task.text, completed: task.metadata.completed || false, fadingOut: false };
     });
     setTodos(taskObjects);
   };
@@ -182,15 +221,32 @@ export function Todo() {
     setNewTodo("");
     loadTasks();
   }
+
   const toggleTodo = async (id: string) => {
     await Highlight.vectorDB.updateMetadata(tableName, id, { completed: !todos.find(todo => todo.id === id)?.completed });
     loadTasks();
+  }
+
+  const toggleTodoWithFadeOut = async (id: string) => {
+    // Find the todo item and update its 'fadingOut' state temporarily
+    const updatedTodos = todos.map(todo => {
+      if (todo.id === id) {
+        return { ...todo, fadingOut: true }; // Add a fadingOut property
+      }
+      return todo;
+    });
+    setTodos(updatedTodos);
+    setTimeout(async () => {
+      toggleTodo(id);
+    }, 1000); // Delay of 1 second for the fade-out effect
   };
 
   const deleteTodo = async (id: string) => {
     await Highlight.vectorDB.deleteItem(tableName, id);
     loadTasks();
   };
+
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative">
@@ -236,35 +292,88 @@ export function Todo() {
           </Button>
         </div>
         <div className="space-y-2">
-          {todos.map((todo) => (
-            <div
+          {incompleteTodos.map((todo) => (
+            <TodoItem
               key={todo.id}
-              className={`flex items-center justify-between bg-muted rounded-md px-3 py-2 ${
-                todo.completed ? "line-through text-muted-foreground" : "text-card-foreground"
-              }`}
-            >
-              <div className="flex items-center">
-                <Checkbox
-                  id={`todo-${todo.id}`}
-                  checked={todo.completed}
-                  className="mr-2"
-                  onCheckedChange={() => toggleTodo(todo.id)}
-                />
-                <label htmlFor={`todo-${todo.id}`}>{todo.text}</label>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteTodo(todo.id)}
-                className="text-muted-foreground hover:text-card-foreground"
-              >
-                <Trash2Icon className="w-4 h-4" />
-              </Button>
-            </div>
+              todo={todo}
+              onCheckedChange={toggleTodoWithFadeOut}
+              onDelete={deleteTodo}
+            />
           ))}
         </div>
+        <Collapsible
+          open={showCompletedTodos}
+          onOpenChange={() => setShowCompletedTodos(!showCompletedTodos)}
+          className="mt-4"
+        >
+          <div className="flex justify-end">
+            <CollapsibleTrigger className="flex items-center bg-muted rounded-md px-3 py-2 cursor-pointer justify-between">
+              <div className="flex items-center">
+                {showCompletedTodos ? (
+                    <>
+                      <ChevronDownIcon className="w-4 h-4 mr-2" />
+                      Hide Completed Items
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRightIcon className="w-4 h-4 mr-2" />
+                      Show Completed Items
+                    </>
+                  )}
+              </div>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent className="space-y-2 mt-2">
+            {completedTodos.map((todo) => (
+              <TodoItem
+                key={todo.id}
+                todo={todo}
+                onCheckedChange={toggleTodo}
+                onDelete={deleteTodo}
+              />
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </div>
+  )
+}
+
+function ChevronRightIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   )
 }
 
