@@ -38,23 +38,73 @@ interface TodoItemProps {
   todo: Task;
   onCheckedChange: (id: string) => void;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, text: string) => void;
 }
 
-const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete }) => {
+const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate }) => {
+  // State to toggle edit mode
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(todo.text);
+
+  // Handle double click to toggle edit mode
+  const handleClick = () => {
+    setIsEditing(true);
+  };
+
+  useEffect(() => {
+    setEditText(todo.text);
+  }, [todo.text]);
+
+  // Handle input change
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditText(e.target.value);
+  };
+
+  // Handle submission of the new text
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      if (e.key === 'Enter') {
+        onUpdate(todo.id, editText);  // Call onUpdate with the new text
+      }
+      setIsEditing(false);
+      setEditText(todo.text);  // Reset the input field on escape
+    }
+  };
+
+  // Handle blur to exit edit mode
+  const handleBlur = () => {
+    onUpdate(todo.id, editText);
+    setIsEditing(false);
+  };
+
   return (
     <div
       className={`flex items-center justify-between bg-muted rounded-md px-3 py-2 ${
         (todo.completed || todo.fadingOut) ? "line-through text-muted-foreground" : "text-card-foreground"
       } ${todo.fadingOut ? "fade-out" : ""}`}
     >
-      <div className="flex items-center">
+      <div className="flex items-center flex-grow">
         <Checkbox
           id={`todo-${todo.id}`}
           checked={todo.completed}
           className="mr-2"
           onCheckedChange={() => onCheckedChange(todo.id)}
         />
-        <label htmlFor={`todo-${todo.id}`}>{todo.text}</label>
+        {isEditing ? (
+          <input
+            type="text"
+            value={editText}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            autoFocus
+            className="flex-grow mr-2 px-2 py-1 rounded-md"
+          />
+        ) : (
+          <label htmlFor={`todo-${todo.id}`} onClick={handleClick}>
+            {todo.text}
+          </label>
+        )}
       </div>
       <Button
         variant="ghost"
@@ -82,6 +132,7 @@ export function Todo() {
   const [hotKey, setHotKey] = useState("")
   const completedTodos = todos.filter((todo) => todo.completed)
   const incompleteTodos = todos.filter((todo) => !todo.completed)
+  const [slmCapable, setSlmCapable] = useState(false);
 
   useEffect(() => {
     nameRef.current = name;
@@ -93,6 +144,13 @@ export function Todo() {
       setShowHelpSection(showHelp);
     }
     getShowHelpSection();
+  }, []);
+
+  useEffect(() => {
+    const isSlmCapable = async () => {
+      setSlmCapable(await Highlight.inference.isSlmCapable());
+    }
+    isSlmCapable();
   }, []);
 
   useEffect(() => {
@@ -140,7 +198,7 @@ export function Todo() {
     return () => {
       destructor();
     };
-  }, []);
+  });
 
   const detectTask = async (context: HighlightContext) => {
     const system_prompt = `You are a helpful AI assistant designed to analyze group conversations and detect whether any task has been assigned to the current user whose name will be provided.
@@ -169,7 +227,7 @@ export function Todo() {
       `;
 
     console.log("User Prompt", user_prompt);
-    const response = await Highlight.inference.requestCompletionSlm(system_prompt, user_prompt, "")
+    const response = await Highlight.inference.requestCompletionSlm(system_prompt, user_prompt, grammar)
     return response;
   }
 
@@ -190,6 +248,9 @@ export function Todo() {
 
   useEffect(() => {
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
+      if (!slmCapable) {
+        return;
+      }
       console.log(context);
       // Check if it is slack
       if (context.url?.includes("app.slack.com") || context.appName === "Slack") {
@@ -222,7 +283,7 @@ export function Todo() {
     return () => {
       removeListener();
     };
-  }, []);
+  });
 
   useEffect(() => {
     loadTasks();
@@ -234,6 +295,11 @@ export function Todo() {
     }
     await addTask(newTodo);
     setNewTodo("");
+  }
+
+  const updateTodo = async (id: string, text: string) => {
+    await Highlight.vectorDB.updateText(tableName, id, text);
+    loadTasks();
   }
 
   const toggleTodo = async (id: string) => {
@@ -317,6 +383,7 @@ export function Todo() {
               todo={todo}
               onCheckedChange={toggleTodoWithFadeOut}
               onDelete={deleteTodo}
+              onUpdate={updateTodo}
             />
           ))}
         </div>
@@ -349,6 +416,7 @@ export function Todo() {
                 todo={todo}
                 onCheckedChange={toggleTodo}
                 onDelete={deleteTodo}
+                onUpdate={updateTodo}
               />
             ))}
           </CollapsibleContent>
@@ -372,10 +440,16 @@ export function Todo() {
           <div className="mb-2">
             <h3 className="text-lg font-bold mb-2">Fully Automatic</h3>
             <ul className="list-disc pl-4 space-y-2">
-              <li>Just sit back and relax. We will automatically add items the <b>Todo list</b> based on your screen contents.</li>
-              <li>Just ensure you have notification enabled for Highlight in your OS settings.</li>
-              <li>We will send a notification whenever we add an item to your <b>Todo list</b></li>
-              <li>Currently fully automatic mode is supported only for Slack. Support for more apps coming soon.</li>
+              {slmCapable ? (
+                <>
+                  <li>Just sit back and relax. We will automatically add items the <b>Todo list</b> based on your screen contents.</li>
+                  <li>Just ensure you have notification enabled for Highlight in your OS settings.</li>
+                  <li>We will send a notification whenever we add an item to your <b>Todo list</b></li>
+                  <li>Currently fully automatic mode is supported only for Slack. Support for more apps coming soon.</li>
+                </>
+              ) : (
+                <li>Sorry. Your device does not support fully automatic task detection.</li>
+              )}
             </ul>
           </div>
         </div>
