@@ -232,12 +232,8 @@ export function Todo() {
     if (newTodo.trim() === "") {
       return;
     }
-    if (await isDuplicateTask(newTodo)) {
-      return;
-    }
-    await Highlight.vectorDB.insertItem(tableName, newTodo, { completed: false });
+    await addTask(newTodo);
     setNewTodo("");
-    loadTasks();
   }
 
   const toggleTodo = async (id: string) => {
