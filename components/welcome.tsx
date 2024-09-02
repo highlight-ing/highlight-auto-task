@@ -66,7 +66,7 @@ export function Welcome() {
             </Button>
           </div>
         </div>
-        <div className="mt-12">
+        {/* <div className="mt-12">
           <h2 className="text-2xl font-bold text-black">Currently Supported for</h2>
           <div className="grid grid-cols-1 gap-4 mt-4">
             <div className="flex flex-col items-center justify-center">
@@ -89,7 +89,7 @@ export function Welcome() {
               <span className="mt-2 text-sm font-medium text-black">Outlook</span>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   )

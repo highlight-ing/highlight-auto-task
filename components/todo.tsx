@@ -78,12 +78,30 @@ export function Todo() {
 
   const [isEditingName, setIsEditingName] = useState(false)
   const [showCompletedTodos, setShowCompletedTodos] = useState(false)
+  const [showHelpSection, setShowHelpSection] = useState(false)
+  const [hotKey, setHotKey] = useState("")
   const completedTodos = todos.filter((todo) => todo.completed)
   const incompleteTodos = todos.filter((todo) => !todo.completed)
 
   useEffect(() => {
     nameRef.current = name;
   }, [name]);
+
+  useEffect(() => {
+    const getShowHelpSection = async () => {
+      const showHelp = await Highlight.appStorage.get("showHelpSection") ?? true;
+      setShowHelpSection(showHelp);
+    }
+    getShowHelpSection();
+  }, []);
+
+  useEffect(() => {
+    const getHotKey = async () => {
+      const hotKey = await Highlight.app.getHotkey();
+      setHotKey(hotKey);
+    }
+    getHotKey();
+  }, []);
 
   const handleUserNameEdit = () => {
     setIsEditingName(true)
@@ -246,10 +264,15 @@ export function Todo() {
     loadTasks();
   };
 
+  const toggleHelp = async () => {
+    await Highlight.appStorage.set("showHelpSection", !showHelpSection);
+    setShowHelpSection(!showHelpSection);
+  }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
-      <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+      {/* Todo List Box */}
+      <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative mb-4">
         <div className="absolute top-4 right-4 flex items-center space-x-2">
           <UserIcon className="w-5 h-5" />
           {isEditingName ? (
@@ -335,6 +358,38 @@ export function Todo() {
           </CollapsibleContent>
         </Collapsible>
       </div>
+      {/* Help Section */}
+      {showHelpSection && (
+        <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative">
+          <h2 className="text-xl font-bold mb-4 text-card-foreground">How to Use</h2>
+          <button onClick={toggleHelp} className="absolute top-1 right-1 text-muted-foreground hover:text-card-foreground">
+            <CloseIcon />
+          </button>
+          <div className="mb-2">
+            <h3 className="text-lg font-bold mb-2">Semi Automatic</h3>
+            <ul className="list-disc pl-4 space-y-2">
+              <li>To add a new todo, simply press <i>{hotKey}</i> while working on any application.</li>
+              <li>In the highlight popup, use <i>Tab</i> key <b>OR</b> <i>click the drop down</i> to select <b>Todo List</b> app</li>
+              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo List</b></li>
+            </ul>
+          </div>
+          <div className="mb-2">
+            <h3 className="text-lg font-bold mb-2">Fully Automatic</h3>
+            <ul className="list-disc pl-4 space-y-2">
+              <li>Just sit back and relax. We will automatically add items the <b>Todo list</b> based on your screen contents.</li>
+              <li>Just ensure you have notification enabled for Highlight in your OS settings.</li>
+              <li>We will send a notification whenever we add an item to your <b>Todo list</b></li>
+              <li>Currently fully automatic mode is supported only for Slack. Support for more apps coming soon.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+      {/* "?" Button */}
+      {!showHelpSection && (
+        <button onClick={toggleHelp} className="fixed bottom-4 right-4 text-muted-foreground hover:text-card-foreground">
+          <QuestionIcon />
+        </button>
+      )}
     </div>
   )
 }
@@ -398,6 +453,25 @@ function Trash2Icon(props: any) {
       <line x1="14" x2="14" y1="11" y2="17" />
     </svg>
   )
+}
+
+function CloseIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  );
+}
+
+function QuestionIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 19h0" />
+      <path d="M9.09 9a3 3 0 0 1 5.83-1c.11.21.18.45.18.7 0 1.11-1.47 1.61-2.18 2.22-.52.45-.83.78-.83 1.36v.93" />
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  );
 }
 
 function UserIcon(props: any) {
