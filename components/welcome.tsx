@@ -26,11 +26,25 @@ To read more about using these font, please visit the Next.js documentation:
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function Welcome() {
   const { handleNameUpdate } = useName();
   const [name, setName] = useState("");
+  const [platform, setPlatform] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const platform = navigator.platform.toLowerCase();
+      if (platform.includes('win')) {
+        setPlatform('Windows');
+      } else if (platform.includes('mac')) {
+        setPlatform('Mac');
+      } else {
+        setPlatform('Other');
+      }
+    }
+  }, []);
 
 
   return (
@@ -41,55 +55,61 @@ export function Welcome() {
           Effortlessly manage your tasks with our intelligent to-do app. Auto TODO automatically detects tasks,
           from your screen.
         </p>
-        <div className="mt-8">
-          <label htmlFor="name" className="block mb-2 text-xl font-semibold text-black">
-            What is your name?
-          </label>
-          <p className="mb-4 text-base text-black">We need to know your name, for detecting the tasks meant for you.</p>
-          <div className="flex items-center justify-center">
-            <Input
-              id="name"
-              type="text"
-              placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full max-w-md px-4 py-2 text-black bg-white rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-          <div className="flex justify-center mt-4">
-            <Button
-              disabled={!name} // Button is enabled only when 'name' state has a value
-              className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              onClick={() => handleNameUpdate(name)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-        {/* <div className="mt-12">
-          <h2 className="text-2xl font-bold text-black">Currently Supported for</h2>
-          <div className="grid grid-cols-1 gap-4 mt-4">
-            <div className="flex flex-col items-center justify-center">
-              <SlackIcon className="w-8 h-8 text-black" />
-              <span className="mt-2 text-sm font-medium text-black">Slack</span>
+        {platform !== 'Mac' ? (
+          <p className="mt-8 text-xl font-semibold text-red-500">
+            Your OS Not Supported. Currently, this feature works on MacOS only.
+          </p>
+        ) : (
+          <div className="mt-8">
+            <label htmlFor="name" className="block mb-2 text-xl font-semibold text-black">
+              What is your name?
+            </label>
+            <p className="mb-4 text-base text-black">We need to know your name, for detecting the tasks meant for you.</p>
+            <div className="flex items-center justify-center">
+              <Input
+                id="name"
+                type="text"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full max-w-md px-4 py-2 text-black bg-white rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div className="flex justify-center mt-4">
+              <Button
+                disabled={!name} // Button is enabled only when 'name' state has a value
+                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() => handleNameUpdate(name)}
+              >
+                Next
+              </Button>
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-black mt-8">Supporting soon for</h2>
-          <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-3">
-            <div className="flex flex-col items-center justify-center">
-              <MailIcon className="w-8 h-8 text-black" />
-              <span className="mt-2 text-sm font-medium text-black">Gmail</span>
+          /* <div className="mt-12">
+            <h2 className="text-2xl font-bold text-black">Currently Supported for</h2>
+            <div className="grid grid-cols-1 gap-4 mt-4">
+              <div className="flex flex-col items-center justify-center">
+                <SlackIcon className="w-8 h-8 text-black" />
+                <span className="mt-2 text-sm font-medium text-black">Slack</span>
+              </div>
             </div>
-            <div className="flex flex-col items-center justify-center">
-              <MessageCircleIcon className="w-8 h-8 text-black" />
-              <span className="mt-2 text-sm font-medium text-black">WhatsApp</span>
+            <h2 className="text-2xl font-bold text-black mt-8">Supporting soon for</h2>
+            <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-3">
+              <div className="flex flex-col items-center justify-center">
+                <MailIcon className="w-8 h-8 text-black" />
+                <span className="mt-2 text-sm font-medium text-black">Gmail</span>
+              </div>
+              <div className="flex flex-col items-center justify-center">
+                <MessageCircleIcon className="w-8 h-8 text-black" />
+                <span className="mt-2 text-sm font-medium text-black">WhatsApp</span>
+              </div>
+              <div className="flex flex-col items-center justify-center">
+                <InboxIcon className="w-8 h-8 text-black" />
+                <span className="mt-2 text-sm font-medium text-black">Outlook</span>
+              </div>
             </div>
-            <div className="flex flex-col items-center justify-center">
-              <InboxIcon className="w-8 h-8 text-black" />
-              <span className="mt-2 text-sm font-medium text-black">Outlook</span>
-            </div>
-          </div>
-        </div> */}
+          </div> */
+        )}
       </div>
     </div>
   )
