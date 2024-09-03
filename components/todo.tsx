@@ -27,11 +27,16 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 
+type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
+type AdditionMethodType = 'manually' | 'automatically' | 'semi_automatically';
+
 export interface Task {
   id: string;
   text: string;
-  completed: boolean;
+  status: StatusType;
+  additionMethod: AdditionMethodType;
   fadingOut: boolean;
+  lastModified: string;  // ISO 8601 format
 }
 
 interface TodoItemProps {
@@ -80,13 +85,13 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   return (
     <div
       className={`flex items-center justify-between bg-muted rounded-md px-3 py-2 ${
-        (todo.completed || todo.fadingOut) ? "line-through text-muted-foreground" : "text-card-foreground"
+        (todo.status === 'completed' || todo.fadingOut) ? "line-through text-muted-foreground" : "text-card-foreground"
       } ${todo.fadingOut ? "fade-out" : ""}`}
     >
       <div className="flex items-center flex-grow">
         <Checkbox
           id={`todo-${todo.id}`}
-          checked={todo.completed}
+          checked={todo.status === 'completed'}
           className="mr-2"
           onCheckedChange={() => onCheckedChange(todo.id)}
         />
@@ -130,8 +135,8 @@ export function Todo() {
   const [showCompletedTodos, setShowCompletedTodos] = useState(false)
   const [showHelpSection, setShowHelpSection] = useState(false)
   const [hotKey, setHotKey] = useState("")
-  const completedTodos = todos.filter((todo) => todo.completed)
-  const incompleteTodos = todos.filter((todo) => !todo.completed)
+  const completedTodos = todos.filter((todo) => todo.status === 'completed')
+  const incompleteTodos = todos.filter((todo) => todo.status === 'pending')
   const [slmCapable, setSlmCapable] = useState(false);
 
   useEffect(() => {
@@ -176,22 +181,32 @@ export function Todo() {
     const tasks = await Highlight.vectorDB.getAllItems(tableName);
     // tasks is just a string array, convert it to Task[]
     const taskObjects = tasks.map((task, index: number) => {
-      return { id: task.id, text: task.text, completed: task.metadata.completed || false, fadingOut: false };
+      return {  id: task.id,
+                text: task.text,
+                status: task.metadata.status,
+                additionMethod: task.metadata.additionMethod,
+                lastModified: task.metadata.lastModified,
+                fadingOut: false };
     });
     setTodos(taskObjects);
   };
 
-  const addTask = async (task: string) => {
+  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType) => {
     console.log("Adding task : ", task);
-    await Highlight.vectorDB.insertItem(tableName, task, { completed: false });
-    await Highlight.app.showNotification('New task added to TODO list', task);
+    await Highlight.vectorDB.insertItem(tableName, task, {  status: status ? status : 'pending',
+                                                            additionMethod: additionMethod,
+                                                            lastModified: new Date().toISOString() });
+    if (additionMethod === 'automatically' && status !== 'false_positive') {
+      await Highlight.app.showNotification('New task added to TODO list', task);
+    }
     loadTasks();
+
   }
 
   useEffect(() => {
     const destructor = Highlight.app.addListener('onContext', async (context: HighlightContext) => {
       if (context.suggestion) {
-        addTask(context.suggestion);
+        addTask(context.suggestion, 'semi_automatically');
       }
     })
 
@@ -200,36 +215,29 @@ export function Todo() {
     };
   });
 
-  const detectTask = async (context: HighlightContext) => {
-    const system_prompt = `You are a helpful AI assistant designed to analyze group conversations and detect whether any task has been assigned to the current user whose name will be provided.
-    Your goal is to identify the following.
-    1. Whether the current user has been assigned any task as a result of the group conversion?
-    2. If the answer to the above question is yes, then a single line task that can be added to the TODO list of the user.
+  const system_prompt = `You are a helpful AI assistant designed to analyze conversations and detect whether any task has been assigned to the current user whose name will be provided. This conversation could be a group conversation or a one-on-one chat.
+  Your goal is to identify the following.
+  1. Whether the current user has been assigned any task as a result of the conversion?
+  2. If the answer to the above question is yes, then a single line task that can be added to the TODO list of the user.
 
-    Instructions:
-    1. The user will provide a full name followed by a group conversation seen on their computer screen.
-    2. Analyze the conversation and determine if there's a task the mentioned user needs to complete.
-    3. Consider only explicitly mentioned tasks for the mentioned user.
-    4. If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
-    5. The task should be something the user mentioned in the input needs to do, not tasks for other people.
-    6. If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
-    7. Do not prioritize or categorize the task.
-    8. Do not include any additional information such as due dates or associated people.
-    9. If multiple tasks are present, choose the most relevant or important one.
-    10. Provide only the task description without any additional context or explanation.
+  Instructions:
+  1. The user will provide a full name followed by one or more conversations seen on their computer screen.
+  2. Analyze the conversation and determine if there's a task the mentioned user needs to complete.
+  3. Consider only explicitly mentioned tasks for the mentioned user.
+  4. If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
+  5. The task should be something the user mentioned in the input needs to do, not tasks for other people.
+  6. If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
+  7. Do not prioritize or categorize the task.
+  8. Do not include any additional information such as due dates or associated people.
+  9. If multiple tasks are present, choose the most relevant or important one.
+  10. Provide only the task description without any additional context or explanation.
 
-    Remember, your response should be either "Task assigned : " followed by a single-line task description or "Task not assigned" if no relevant task is assigned for the name of the user mentioned!.
+  Remember, your response should be either "Task assigned : " followed by a single-line task description or "Task not assigned" if no relevant task is assigned for the name of the user mentioned!.
+  `;
+  const grammar = `
+    root ::= ("Task not assigned" | "Task assigned : " single-line)
+    single-line ::= [^\n.]+ ("." | "\n")
     `;
-    const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
-    const grammar = `
-      root ::= ("Task not assigned" | "Task assigned : " single-line)
-      single-line ::= [^\n.]+ ("." | "\n")
-      `;
-
-    console.log("User Prompt", user_prompt);
-    const response = await Highlight.inference.requestCompletionSlm(system_prompt, user_prompt, grammar)
-    return response;
-  }
 
   const isDuplicateTask = async (task: string) => {
     const closestTask = await Highlight.vectorDB.search(tableName, task, 1);
@@ -259,16 +267,36 @@ export function Todo() {
           lastCallTime.current = now;
           console.log("Slack is open");
           const context = await Highlight.user.getContext(true)
-          const task = await detectTask(context);
-          console.log(task);
-          if (task.startsWith("Task assigned : ")) {
+          const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
+          const slmTask = await Highlight.inference.getTextPredictionSlm(
+            [{role: 'system', content: system_prompt},
+             {role: 'user', content: user_prompt}],
+            grammar);
+          console.log('slmTask : ', slmTask);
+          if (slmTask.startsWith("Task assigned : ")) {
             // Extract the task
-            const taskText = task.replace("Task assigned : ", "");
+            const taskText = slmTask.replace("Task assigned : ", "");
 
             if (await isDuplicateTask(taskText)) {
               return;
             }
-            await addTask(taskText);
+            const generator = Highlight.inference.getTextPrediction(
+              [{role: 'system', content: system_prompt},
+               {role: 'user', content: user_prompt}]);
+            let llmTask: string = '';
+
+            for await (const part of generator) {
+              llmTask += part;
+            }
+            console.log('llmTask : ', llmTask);
+            // check if llmTask contains "Task not assigned" substring
+            if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
+              // Use the regex to replace any variation of "Task assigned :" with an empty string
+              const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
+              await addTask(taskText, 'automatically');
+            } else {
+              await addTask(taskText, 'automatically', 'false_positive');
+            }
           }
 
         } else {
@@ -293,7 +321,7 @@ export function Todo() {
     if (newTodo.trim() === "") {
       return;
     }
-    await addTask(newTodo);
+    await addTask(newTodo, 'manually');
     setNewTodo("");
   }
 
@@ -303,7 +331,8 @@ export function Todo() {
   }
 
   const toggleTodo = async (id: string) => {
-    await Highlight.vectorDB.updateMetadata(tableName, id, { completed: !todos.find(todo => todo.id === id)?.completed });
+    const newStatus = todos.find(todo => todo.id === id)?.status === 'completed' ? 'pending' : 'completed';
+    await Highlight.vectorDB.updateMetadata(tableName, id, { status: newStatus, lastModified: new Date().toISOString() });
     loadTasks();
   }
 
@@ -322,7 +351,13 @@ export function Todo() {
   };
 
   const deleteTodo = async (id: string) => {
-    await Highlight.vectorDB.deleteItem(tableName, id);
+    const additionMethod = todos.find(todo => todo.id === id)?.additionMethod;
+    if (additionMethod === 'automatically') {
+      // For automatically added tasks, update the status to 'deleted' instead of deleting, so that we don't add it again
+      await Highlight.vectorDB.updateMetadata(tableName, id, { status: 'deleted', lastModified: new Date().toISOString() });
+    } else {
+      await Highlight.vectorDB.deleteItem(tableName, id);
+    }
     loadTasks();
   };
 
@@ -358,7 +393,7 @@ export function Todo() {
             </div>
           )}
         </div>
-        <h1 className="text-2xl font-bold mb-4 text-card-foreground">Todo List - alpha version</h1>
+        <h1 className="text-2xl font-bold mb-4 text-card-foreground">Todo List</h1>
         <div className="flex items-center mb-4">
           <Input
             type="text"

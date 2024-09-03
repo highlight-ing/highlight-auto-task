@@ -36,7 +36,7 @@ export function Welcome() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-white">
       <div className="max-w-3xl px-4 py-12 text-center">
-        <h1 className="text-5xl font-bold text-black">Auto TODO - Alpha version</h1>
+        <h1 className="text-5xl font-bold text-black">Auto TODO</h1>
         <p className="mt-4 text-lg text-black">
           Effortlessly manage your tasks with our intelligent to-do app. Auto TODO automatically detects tasks,
           from your screen.
