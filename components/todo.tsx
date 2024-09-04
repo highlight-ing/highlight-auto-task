@@ -293,10 +293,11 @@ export function Todo() {
             if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
               // Use the regex to replace any variation of "Task assigned :" with an empty string
               const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
-              await addTask(taskText, 'automatically');
-            } else {
-              await addTask(taskText, 'automatically', 'false_positive');
+              if (!await isDuplicateTask(taskText)) {
+                await addTask(taskText, 'automatically');
+              }
             }
+            await addTask(taskText, 'automatically', 'false_positive');
           }
 
         } else {
@@ -326,13 +327,21 @@ export function Todo() {
   }
 
   const updateTodo = async (id: string, text: string) => {
-    await Highlight.vectorDB.updateText(tableName, id, text);
+    const todo = todos.find(todo => todo.id === id);
+    await Highlight.vectorDB.updateText(tableName, id, text,
+      { status: todo?.status,
+        additionMethod: todo?.additionMethod,
+        lastModified: new Date().toISOString() });
     loadTasks();
   }
 
   const toggleTodo = async (id: string) => {
-    const newStatus = todos.find(todo => todo.id === id)?.status === 'completed' ? 'pending' : 'completed';
-    await Highlight.vectorDB.updateMetadata(tableName, id, { status: newStatus, lastModified: new Date().toISOString() });
+    const todo = todos.find(todo => todo.id === id);
+    const newStatus = todo?.status === 'completed' ? 'pending' : 'completed';
+    await Highlight.vectorDB.updateMetadata(tableName, id,
+      { status: newStatus,
+        additionMethod: todo?.additionMethod,
+        lastModified: new Date().toISOString() });
     loadTasks();
   }
 
@@ -354,7 +363,10 @@ export function Todo() {
     const additionMethod = todos.find(todo => todo.id === id)?.additionMethod;
     if (additionMethod === 'automatically') {
       // For automatically added tasks, update the status to 'deleted' instead of deleting, so that we don't add it again
-      await Highlight.vectorDB.updateMetadata(tableName, id, { status: 'deleted', lastModified: new Date().toISOString() });
+      await Highlight.vectorDB.updateMetadata(tableName, id,
+        { status: 'deleted',
+          additionMethod: additionMethod,
+          lastModified: new Date().toISOString() });
     } else {
       await Highlight.vectorDB.deleteItem(tableName, id);
     }
