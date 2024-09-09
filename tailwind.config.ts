@@ -8,6 +8,9 @@ export default {
   ],
   theme: {
     extend: {
+      boxShadow: {
+        'custom': '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
+      },
       fontFamily: {
         heading: ['var(--font-heading)', ...fontFamily.sans],
         body: ['var(--font-body)', ...fontFamily.sans]

@@ -364,7 +364,7 @@ export function Todo() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 shadow-custom rounded-lg overflow-hidden">
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Todo List</h1>
@@ -452,7 +452,7 @@ export function Todo() {
         </div>
         
         {showHelpSection && (
-          <div className="mt-8 bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+          <div className="mt-8 bg-white dark:bg-gray-800 shadow-custom rounded-lg overflow-hidden">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">How to Use</h2>
@@ -476,7 +476,7 @@ export function Todo() {
                       <>
                         <li>We automatically add items to the <strong>Todo list</strong> based on your screen contents.</li>
                         <li>Ensure notifications are enabled for Highlight in your OS settings.</li>
-                        <li>You'll receive a notification when an item is added to your <strong>Todo list</strong>.</li>
+                        <li>You&apos;ll receive a notification when an item is added to your <strong>Todo list</strong>.</li>
                         <li>Currently, fully automatic mode is supported only for Slack. Support for more apps coming soon.</li>
                       </>
                     ) : (
@@ -492,7 +492,7 @@ export function Todo() {
         {!showHelpSection && (
           <button
             onClick={toggleHelp}
-            className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 p-2 rounded-full shadow-md transition-colors"
+            className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 p-2 rounded-full shadow-custom transition-colors"
           >
             <QuestionIcon className="w-6 h-6" />
           </button>
@@ -563,7 +563,7 @@ function Trash2Icon(props: any) {
   )
 }
 
-function CloseIcon() {
+function CloseIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -572,7 +572,7 @@ function CloseIcon() {
   );
 }
 
-function QuestionIcon() {
+function QuestionIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 19h0" />
