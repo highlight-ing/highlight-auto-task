@@ -221,16 +221,13 @@ export function Todo() {
   2. If the answer to the above question is yes, then a single line task that can be added to the TODO list of the user.
 
   Instructions:
-  1. The user will provide a full name followed by one or more conversations seen on their computer screen.
-  2. Analyze the conversation and determine if there's a task the mentioned user needs to complete.
-  3. Consider only explicitly mentioned tasks for the mentioned user.
-  4. If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
-  5. The task should be something the user mentioned in the input needs to do, not tasks for other people.
-  6. If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
-  7. Do not prioritize or categorize the task.
-  8. Do not include any additional information such as due dates or associated people.
-  9. If multiple tasks are present, choose the most relevant or important one.
-  10. Provide only the task description without any additional context or explanation.
+  - The user will provide a full name followed by one or more conversations seen on their computer screen.
+  - Analyze the conversation and determine if there's a task the mentioned user needs to complete.
+  - If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
+  - The task should be something the user mentioned in the input needs to do, not tasks for other people.
+  - If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
+  - If multiple tasks are present, choose the most relevant or important one.
+  - Provide only the single-line task description without any additional context or explanation.
 
   Remember, your response should be either "Task assigned : " followed by a single-line task description or "Task not assigned" if no relevant task is assigned for the name of the user mentioned!.
   `;
@@ -268,6 +265,7 @@ export function Todo() {
           console.log("Slack is open");
           const context = await Highlight.user.getContext(true)
           const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
+          console.log("User Prompt : ", user_prompt);
           const slmTask = await Highlight.inference.getTextPredictionSlm(
             [{role: 'system', content: system_prompt},
              {role: 'user', content: user_prompt}],
