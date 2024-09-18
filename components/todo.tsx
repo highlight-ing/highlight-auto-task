@@ -144,6 +144,10 @@ export function Todo() {
   }, [name]);
 
   useEffect(() => {
+    Highlight.permissions.requestBackgroundPermission();
+  }, []);
+
+  useEffect(() => {
     const getShowHelpSection = async () => {
       const showHelp = await Highlight.appStorage.get("showHelpSection") ?? true;
       setShowHelpSection(showHelp);
