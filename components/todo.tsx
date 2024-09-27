@@ -175,7 +175,7 @@ export function Todo() {
     await Highlight.vectorDB.insertItem(
       tableName,
       task,
-      sourceDocument,
+      sourceDocument ? sourceDocument : "Todo App",
       {
         status: status ? status : 'pending',
         additionMethod: additionMethod,
