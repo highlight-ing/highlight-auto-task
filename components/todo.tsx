@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
+import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime"
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
@@ -152,39 +152,46 @@ export function Todo() {
     setIsEditingName(false)
   }
 
-  const tableName = "tasks";
+  const tableName = "tasks"; 
 
   // Load tasks from the VectorDB
   const loadTasks = async () => {
     const tasks = await Highlight.vectorDB.getAllItems(tableName);
-    // tasks is just a string array, convert it to Task[]
-    const taskObjects = tasks.map((task, index: number) => {
-      return {  id: task.id,
-                text: task.text,
-                status: task.metadata.status,
-                additionMethod: task.metadata.additionMethod,
-                lastModified: task.metadata.lastModified,
-                fadingOut: false };
+    const taskObjects = tasks.map((task) => {
+      return {
+        id: task.id,
+        text: task.text,
+        status: task.metadata.status,
+        additionMethod: task.metadata.additionMethod,
+        lastModified: task.metadata.lastModified,
+        fadingOut: false
+      };
     });
     setTodos(taskObjects);
   };
 
-  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType) => {
+  const addTask = async (task: string, sourceDocument: string | undefined, additionMethod: AdditionMethodType, status?: StatusType) => {
     console.log("Adding task : ", task);
-    await Highlight.vectorDB.insertItem(tableName, task, {  status: status ? status : 'pending',
-                                                            additionMethod: additionMethod,
-                                                            lastModified: new Date().toISOString() });
+    await Highlight.vectorDB.insertItem(
+      tableName,
+      task,
+      sourceDocument,
+      {
+        status: status ? status : 'pending',
+        additionMethod: additionMethod,
+        lastModified: new Date().toISOString()
+      }
+    );
     if (additionMethod === 'automatically' && status !== 'false_positive') {
       await Highlight.app.showNotification('New task added to TODO list', task);
     }
     loadTasks();
-
   }
 
   useEffect(() => {
     const destructor = Highlight.app.addListener('onContext', async (context: HighlightContext) => {
       if (context.suggestion) {
-        addTask(context.suggestion, 'semi_automatically');
+        addTask(context.suggestion, context.environment.ocrScreenContents ? context.environment.ocrScreenContents : undefined, 'semi_automatically');
       }
     })
 
@@ -217,14 +224,14 @@ export function Todo() {
     single-line ::= [^\n.]+ ("." | "\n")
     `;
 
-  const isDuplicateTask = async (task: string) => {
-    const closestTask = await Highlight.vectorDB.search(tableName, task, 1);
+  const isDuplicateTask = async (task: string, sourceDocument: string) => {
+    const closestTask = await Highlight.vectorDB.search(tableName, task, sourceDocument, 1);
     if (closestTask.length === 0) {
       console.log("No closest task found");
       return false;
     }
     console.log("Closest task", closestTask);
-    if (Math.abs(closestTask[0].distance) < 0.25) {
+    if (Math.abs(closestTask[0].combinedSimilarity) > 0.90) {
       console.log("Duplicate task detected");
       return true
     }
@@ -260,7 +267,7 @@ export function Todo() {
             // Extract the task
             const taskText = slmTask.replace("Task assigned : ", "");
 
-            if (await isDuplicateTask(taskText)) {
+            if (await isDuplicateTask(taskText, user_prompt)) {
               return;
             }
             const generator = Highlight.inference.getTextPrediction(
@@ -276,11 +283,11 @@ export function Todo() {
             if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
               // Use the regex to replace any variation of "Task assigned :" with an empty string
               const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
-              if (!await isDuplicateTask(taskText)) {
-                await addTask(taskText, 'automatically');
+              if (!await isDuplicateTask(taskText, user_prompt)) {
+                await addTask(taskText, user_prompt, 'automatically');
               }
             }
-            await addTask(taskText, 'automatically', 'false_positive');
+            await addTask(taskText, user_prompt, 'automatically', 'false_positive');
           }
 
         } else {
@@ -305,16 +312,22 @@ export function Todo() {
     if (newTodo.trim() === "") {
       return;
     }
-    await addTask(newTodo, 'manually');
+    await addTask(newTodo, undefined, 'manually');
     setNewTodo("");
   }
 
   const updateTodo = async (id: string, text: string) => {
     const todo = todos.find(todo => todo.id === id);
-    await Highlight.vectorDB.updateText(tableName, id, text,
-      { status: todo?.status,
+    await Highlight.vectorDB.updateText(
+      tableName,
+      id,
+      text,
+      {
+        status: todo?.status,
         additionMethod: todo?.additionMethod,
-        lastModified: new Date().toISOString() });
+        lastModified: new Date().toISOString()
+      }
+    );
     loadTasks();
   }
 
