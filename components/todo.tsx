@@ -27,6 +27,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
+import { llm_system_prompt, slm_system_prompt } from './prompts';
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
 type AdditionMethodType = 'manually' | 'automatically' | 'semi_automatically';
@@ -198,21 +199,33 @@ export function Todo() {
     setTodos(taskObjects);
   };
 
-  const isDuplicateTask = async (similarTasks: any[], userPrompt: string | undefined) => {
-    if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.1) {
-      // Found a similar task, check its source
+  const isDuplicateTask = async (similarTasks: any[], userPrompt: string | undefined): Promise<boolean> => {
+    if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.35) {
+      console.log("Similar Task Found");
       const existingTask = similarTasks[0];
       const metadata = JSON.parse(existingTask.metadata);
       const existingSourceId = metadata.sourceId;
 
       if (existingSourceId && userPrompt) {
         const existingSources = await Highlight.vectorDB.getAllItems(sourcesTableName);
-        const existingSourceVector = existingSources.find(source => source.metadata.sourceId === existingSourceId)?.vector;
-        const newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
-        const similarity = cosineSimilarity(existingSourceVector, newSourceEmbedding);
+        
+        const existingSource = existingSources.find(source => source.metadata.sourceId === existingSourceId);
+        
+        const existingSourceVector = existingSource?.vector;
+        
+        let newSourceEmbedding;
+        try {
+          newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
+        } catch (error) {
+          console.error("Error getting new source embedding: ", error);
+        }
 
+        console.log("Existing Source Vector: ", existingSourceVector);
+        console.log("New Source Embedding: ", newSourceEmbedding);
+        
+        const similarity = cosineSimilarity(existingSourceVector, newSourceEmbedding);
+        console.log("Similarity : ", similarity);
         if (similarity > 0.9) {
-          console.log("Duplicate task detected");
           return true;
         }
       }
@@ -221,20 +234,8 @@ export function Todo() {
   }
 
   const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType, userPrompt?: string) => {
-    console.log("Adding task : ", task);
-
-    // Search for similar tasks
-    const similarTasks = await Highlight.vectorDB.search(tasksTableName, task, 1);
-
-    if (await isDuplicateTask(similarTasks, userPrompt)) {
-      return;
-    }
-
-    let sourceId: string | undefined;
-    if (userPrompt) {
-      sourceId = uuidv4();
-      await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt, {sourceId: sourceId});
-    }
+    const sourceId = uuidv4();
+    await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt ?? "", {sourceId: sourceId});
 
     // Add new task
     await Highlight.vectorDB.insertItem(tasksTableName, task, {
@@ -270,22 +271,6 @@ export function Todo() {
     };
   });
 
-  const system_prompt = `You are a helpful AI assistant designed to analyze conversations and detect whether any task has been assigned to the current user whose name will be provided. This conversation could be a group conversation or a one-on-one chat.
-  Your goal is to identify the following.
-  1. Whether the current user has been assigned any task as a result of the conversion?
-  2. If the answer to the above question is yes, then a single line task that can be added to the TODO list of the user.
-
-  Instructions:
-  - The user will provide a full name followed by one or more conversations seen on their computer screen.
-  - Analyze the conversation and determine if there's a task the mentioned user needs to complete.
-  - If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
-  - The task should be something the user mentioned in the input needs to do, not tasks for other people.
-  - If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
-  - If multiple tasks are present, choose the most relevant or important one.
-  - Provide only the single-line task description without any additional context or explanation.
-
-  Remember, your response should be either "Task assigned : " followed by a single-line task description or "Task not assigned" if no relevant task is assigned for the name of the user mentioned!.
-  `;
   const grammar = `
     root ::= ("Task not assigned" | "Task assigned : " single-line)
     single-line ::= [^\n.]+ ("." | "\n")
@@ -300,34 +285,45 @@ export function Todo() {
       // Check if it is slack
       if (context.url?.includes("app.slack.com") || context.appName === "Slack") {
         const now = Date.now();
-        if (now - lastCallTime.current >= 30000) { // 30 seconds
+        if (now - lastCallTime.current >= 15000) { // 15 seconds
           lastCallTime.current = now;
           console.log("Slack is open");
           const context = await Highlight.user.getContext(true)
-          const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
+          let user_prompt = "\nName of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
           console.log("User Prompt : ", user_prompt);
+          // replace all occurrences of @+name with empty string
+          user_prompt = user_prompt.replace(new RegExp("@+" + nameRef.current, 'g'), nameRef.current);
           const slmTask = await Highlight.inference.getTextPredictionSlm(
-            [{role: 'system', content: system_prompt},
+            [{role: 'system', content: slm_system_prompt},
              {role: 'user', content: user_prompt}],
             grammar);
           console.log('slmTask : ', slmTask);
           if (slmTask.startsWith("Task assigned : ")) {
             const taskText = slmTask.replace("Task assigned : ", "");
+            
+            // Check for duplicate task
+            const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
+            const duplicateTask = await isDuplicateTask(similarTasks, user_prompt);
+            
+            if (!duplicateTask) {
+              // If not a duplicate, proceed with LLM and task addition
+              const generator = Highlight.inference.getTextPrediction(
+                [{role: 'system', content: llm_system_prompt},
+                 {role: 'user', content: user_prompt}]);
+              let llmTask: string = '';
 
-            const generator = Highlight.inference.getTextPrediction(
-              [{role: 'system', content: system_prompt},
-               {role: 'user', content: user_prompt}]);
-            let llmTask: string = '';
-
-            for await (const part of generator) {
-              llmTask += part;
-            }
-            console.log('llmTask : ', llmTask);
-            if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
-              const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
-              await addTask(taskText, 'automatically', undefined, user_prompt);
+              for await (const part of generator) {
+                llmTask += part;
+              }
+              console.log('llmTask : ', llmTask);
+              if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
+                const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
+                await addTask(taskText, 'automatically', 'pending', user_prompt);
+              } else {
+                await addTask(taskText, 'automatically', 'false_positive', user_prompt);
+              }
             } else {
-              await addTask(taskText, 'automatically', 'false_positive', user_prompt);
+              console.log("Duplicate task detected, skipping addition");
             }
           }
         } else {
