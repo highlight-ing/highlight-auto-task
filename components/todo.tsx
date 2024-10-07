@@ -199,33 +199,32 @@ export function Todo() {
     setTodos(taskObjects);
   };
 
-  const isDuplicateTask = async (similarTasks: any[], userPrompt: string | undefined): Promise<boolean> => {
+  const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
+    const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
+    
     if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.35) {
-      console.log("Similar Task Found");
       const existingTask = similarTasks[0];
       const metadata = JSON.parse(existingTask.metadata);
       const existingSourceId = metadata.sourceId;
 
-      if (existingSourceId && userPrompt) {
+      if (existingSourceId) {
         const existingSources = await Highlight.vectorDB.getAllItems(sourcesTableName);
-        
         const existingSource = existingSources.find(source => source.metadata.sourceId === existingSourceId);
-        
         const existingSourceVector = existingSource?.vector;
-        
+
         let newSourceEmbedding;
         try {
           newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
         } catch (error) {
           console.error("Error getting new source embedding: ", error);
+          return false;
         }
 
-        console.log("Existing Source Vector: ", existingSourceVector);
-        console.log("New Source Embedding: ", newSourceEmbedding);
-        
         const similarity = cosineSimilarity(existingSourceVector, newSourceEmbedding);
-        console.log("Similarity : ", similarity);
-        if (similarity > 0.9) {
+        console.log("Task similarity: ", Math.abs(similarTasks[0].distance));
+        console.log("Source similarity: ", similarity);
+        
+        if (similarity > 0.85) {
           return true;
         }
       }
@@ -291,22 +290,20 @@ export function Todo() {
           const context = await Highlight.user.getContext(true)
           let user_prompt = "\nName of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
           console.log("User Prompt : ", user_prompt);
-          // replace all occurrences of @+name with empty string
           user_prompt = user_prompt.replace(new RegExp("@+" + nameRef.current, 'g'), nameRef.current);
+          
           const slmTask = await Highlight.inference.getTextPredictionSlm(
             [{role: 'system', content: slm_system_prompt},
              {role: 'user', content: user_prompt}],
             grammar);
           console.log('slmTask : ', slmTask);
+          
           if (slmTask.startsWith("Task assigned : ")) {
-            const taskText = slmTask.replace("Task assigned : ", "");
+            const slmTaskText = slmTask.replace("Task assigned : ", "");
             
-            // Check for duplicate task
-            const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
-            const duplicateTask = await isDuplicateTask(similarTasks, user_prompt);
+            const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt);
             
-            if (!duplicateTask) {
-              // If not a duplicate, proceed with LLM and task addition
+            if (!isDuplicateSlmTask) {
               const generator = Highlight.inference.getTextPrediction(
                 [{role: 'system', content: llm_system_prompt},
                  {role: 'user', content: user_prompt}]);
@@ -316,14 +313,22 @@ export function Todo() {
                 llmTask += part;
               }
               console.log('llmTask : ', llmTask);
+              
               if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
-                const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
-                await addTask(taskText, 'automatically', 'pending', user_prompt);
+                const llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "");
+                
+                const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt);
+                
+                if (!isDuplicateLlmTask) {
+                  await addTask(llmTaskText, 'automatically', 'pending', user_prompt);
+                } else {
+                  console.log("Duplicate LLM task detected, skipping addition");
+                }
               } else {
-                await addTask(taskText, 'automatically', 'false_positive', user_prompt);
+                await addTask(slmTaskText, 'automatically', 'false_positive', user_prompt);
               }
             } else {
-              console.log("Duplicate task detected, skipping addition");
+              console.log("Duplicate SLM task detected, skipping addition");
             }
           }
         } else {
