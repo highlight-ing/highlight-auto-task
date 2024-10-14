@@ -185,18 +185,58 @@ export function Todo() {
 
   // Load tasks from the VectorDB
   const loadTasks = async () => {
-    await Highlight.vectorDB.createTable(tasksTableName); // Ensure table exists
-    await Highlight.vectorDB.createTable(sourcesTableName); // Ensure table exists
-    const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
-    const taskObjects = tasks.map((task) => ({
-      id: task.id,
-      text: task.text,
-      status: task.metadata.status,
-      additionMethod: task.metadata.additionMethod,
-      lastModified: task.metadata.lastModified,
-      fadingOut: false
-    }));
-    setTodos(taskObjects);
+    const tasksTableName = "tasks";
+    const sourcesTableName = "sources";
+
+    let recreateTables = false;
+
+    try {
+      const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
+      const sourceIds = new Set();
+
+      const sources = await Highlight.vectorDB.getAllItems(sourcesTableName);
+      sources.forEach(source => sourceIds.add(source.metadata.sourceId));
+
+      for (const task of tasks) {
+        if (task.metadata.sourceId && !sourceIds.has(task.metadata.sourceId)) {
+          recreateTables = true;
+          break;
+        }
+      }
+    } catch (error) {
+      console.log("Error getting tasks: ", error);
+    }
+
+    // Recreate tables if necessary
+    if (recreateTables) {
+      console.log("Recreating tables");
+      // check if tables exist, if it does, delete them else create them
+      try {
+        await Highlight.vectorDB.deleteTable(tasksTableName);
+      } catch (error) {
+        console.log("Error deleting table, recreating it");
+      }
+      await Highlight.vectorDB.createTable(tasksTableName);
+      await Highlight.vectorDB.createTable(sourcesTableName);
+      setTodos([]);
+      return;
+    }
+
+    // Load tasks if tables exist and are valid
+    try {
+      const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
+      const taskObjects = tasks.map((task) => ({
+        id: task.id,
+        text: task.text,
+        status: task.metadata.status,
+        additionMethod: task.metadata.additionMethod,
+        lastModified: task.metadata.lastModified,
+        fadingOut: false
+      }));
+      setTodos(taskObjects);
+    } catch (error) {
+      console.log("Error getting tasks: ", error);
+    }
   };
 
   const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
@@ -512,7 +552,7 @@ export function Todo() {
             <ul className="list-disc pl-4 space-y-2">
               <li>To add a new todo, simply press <i>{hotKey}</i> while working on any application.</li>
               <li>In the highlight popup, use <i>Tab</i> key <b>OR</b> <i>click the drop down</i> to select <b>Todo List</b> app</li>
-              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo List</b></li>
+              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo list</b></li>
             </ul>
           </div>
           <div className="mb-2">
