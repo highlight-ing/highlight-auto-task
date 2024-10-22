@@ -26,6 +26,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
+import { v4 as uuidv4 } from 'uuid';
+import { llm_system_prompt, slm_system_prompt } from './prompts';
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
 type AdditionMethodType = 'manually' | 'automatically' | 'semi_automatically';
@@ -139,6 +141,9 @@ export function Todo() {
   const incompleteTodos = todos.filter((todo) => todo.status === 'pending')
   const [slmCapable, setSlmCapable] = useState(false);
 
+  const tasksTableName = "tasks";
+  const sourcesTableName = "sources";
+
   useEffect(() => {
     nameRef.current = name;
   }, [name]);
@@ -178,33 +183,119 @@ export function Todo() {
     setIsEditingName(false)
   }
 
-  const tableName = "tasks";
-
   // Load tasks from the VectorDB
   const loadTasks = async () => {
-    const tasks = await Highlight.vectorDB.getAllItems(tableName);
-    // tasks is just a string array, convert it to Task[]
-    const taskObjects = tasks.map((task, index: number) => {
-      return {  id: task.id,
-                text: task.text,
-                status: task.metadata.status,
-                additionMethod: task.metadata.additionMethod,
-                lastModified: task.metadata.lastModified,
-                fadingOut: false };
-    });
-    setTodos(taskObjects);
+    const tasksTableName = "tasks";
+    const sourcesTableName = "sources";
+
+    let recreateTables = false;
+
+    try {
+      const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
+      const sourceIds = new Set();
+
+      const sources = await Highlight.vectorDB.getAllItems(sourcesTableName);
+      sources.forEach(source => sourceIds.add(source.metadata.sourceId));
+
+      for (const task of tasks) {
+        if (task.metadata.sourceId && !sourceIds.has(task.metadata.sourceId)) {
+          recreateTables = true;
+          break;
+        }
+      }
+    } catch (error) {
+      console.log("Error getting tasks: ", error);
+    }
+
+    // Recreate tables if necessary
+    if (recreateTables) {
+      console.log("Recreating tables");
+      // check if tables exist, if it does, delete them else create them
+      try {
+        await Highlight.vectorDB.deleteTable(tasksTableName);
+      } catch (error) {
+        console.log("Error deleting table, recreating it");
+      }
+      await Highlight.vectorDB.createTable(tasksTableName);
+      await Highlight.vectorDB.createTable(sourcesTableName);
+      setTodos([]);
+      return;
+    }
+
+    // Load tasks if tables exist and are valid
+    try {
+      const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
+      const taskObjects = tasks.map((task) => ({
+        id: task.id,
+        text: task.text,
+        status: task.metadata.status,
+        additionMethod: task.metadata.additionMethod,
+        lastModified: task.metadata.lastModified,
+        fadingOut: false
+      }));
+      setTodos(taskObjects);
+    } catch (error) {
+      console.log("Error getting tasks: ", error);
+    }
   };
 
-  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType) => {
-    console.log("Adding task : ", task);
-    await Highlight.vectorDB.insertItem(tableName, task, {  status: status ? status : 'pending',
-                                                            additionMethod: additionMethod,
-                                                            lastModified: new Date().toISOString() });
+  const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
+    const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
+    
+    if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.35) {
+      const existingTask = similarTasks[0];
+      const metadata = JSON.parse(existingTask.metadata);
+      const existingSourceId = metadata.sourceId;
+
+      if (existingSourceId) {
+        const existingSources = await Highlight.vectorDB.getAllItems(sourcesTableName);
+        const existingSource = existingSources.find(source => source.metadata.sourceId === existingSourceId);
+        const existingSourceVector = existingSource?.vector;
+
+        let newSourceEmbedding;
+        try {
+          newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
+        } catch (error) {
+          console.error("Error getting new source embedding: ", error);
+          return false;
+        }
+
+        const similarity = cosineSimilarity(existingSourceVector, newSourceEmbedding);
+        console.log("Task similarity: ", Math.abs(similarTasks[0].distance));
+        console.log("Source similarity: ", similarity);
+        
+        if (similarity > 0.85) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType, userPrompt?: string) => {
+    const sourceId = uuidv4();
+    await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt ?? "", {sourceId: sourceId});
+
+    // Add new task
+    await Highlight.vectorDB.insertItem(tasksTableName, task, {
+      status: status || 'pending',
+      additionMethod: additionMethod,
+      lastModified: new Date().toISOString(),
+      sourceId: sourceId
+    });
+
     if (additionMethod === 'automatically' && status !== 'false_positive') {
       await Highlight.app.showNotification('New task added to TODO list', task);
     }
     loadTasks();
+  }
 
+  // Helper function to calculate cosine similarity
+  function cosineSimilarity(vec1: number[], vec2: number[]): number {
+    const dotProduct = vec1.reduce((sum, a, i) => sum + a * vec2[i], 0);
+    const magnitude1 = Math.sqrt(vec1.reduce((sum, a) => sum + a * a, 0));
+    const magnitude2 = Math.sqrt(vec2.reduce((sum, a) => sum + a * a, 0));
+    return dotProduct / (magnitude1 * magnitude2);
   }
 
   useEffect(() => {
@@ -219,41 +310,10 @@ export function Todo() {
     };
   });
 
-  const system_prompt = `You are a helpful AI assistant designed to analyze conversations and detect whether any task has been assigned to the current user whose name will be provided. This conversation could be a group conversation or a one-on-one chat.
-  Your goal is to identify the following.
-  1. Whether the current user has been assigned any task as a result of the conversion?
-  2. If the answer to the above question is yes, then a single line task that can be added to the TODO list of the user.
-
-  Instructions:
-  - The user will provide a full name followed by one or more conversations seen on their computer screen.
-  - Analyze the conversation and determine if there's a task the mentioned user needs to complete.
-  - If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
-  - The task should be something the user mentioned in the input needs to do, not tasks for other people.
-  - If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
-  - If multiple tasks are present, choose the most relevant or important one.
-  - Provide only the single-line task description without any additional context or explanation.
-
-  Remember, your response should be either "Task assigned : " followed by a single-line task description or "Task not assigned" if no relevant task is assigned for the name of the user mentioned!.
-  `;
   const grammar = `
     root ::= ("Task not assigned" | "Task assigned : " single-line)
     single-line ::= [^\n.]+ ("." | "\n")
     `;
-
-  const isDuplicateTask = async (task: string) => {
-    const closestTask = await Highlight.vectorDB.search(tableName, task, 1);
-    if (closestTask.length === 0) {
-      console.log("No closest task found");
-      return false;
-    }
-    console.log("Closest task", closestTask);
-    if (Math.abs(closestTask[0].distance) < 0.25) {
-      console.log("Duplicate task detected");
-      return true
-    }
-    console.log("New task detected");
-    return false;
-  }
 
   useEffect(() => {
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
@@ -264,44 +324,53 @@ export function Todo() {
       // Check if it is slack
       if (context.url?.includes("app.slack.com") || context.appName === "Slack") {
         const now = Date.now();
-        if (now - lastCallTime.current >= 30000) { // 30 seconds
+        if (now - lastCallTime.current >= 15000) { // 15 seconds
           lastCallTime.current = now;
           console.log("Slack is open");
           const context = await Highlight.user.getContext(true)
-          const user_prompt = "Name of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
+          let user_prompt = "\nName of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
           console.log("User Prompt : ", user_prompt);
+          user_prompt = user_prompt.replace(new RegExp("@+" + nameRef.current, 'g'), nameRef.current);
+          
           const slmTask = await Highlight.inference.getTextPredictionSlm(
-            [{role: 'system', content: system_prompt},
+            [{role: 'system', content: slm_system_prompt},
              {role: 'user', content: user_prompt}],
             grammar);
           console.log('slmTask : ', slmTask);
+          
           if (slmTask.startsWith("Task assigned : ")) {
-            // Extract the task
-            const taskText = slmTask.replace("Task assigned : ", "");
+            const slmTaskText = slmTask.replace("Task assigned : ", "");
+            
+            const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt);
+            
+            if (!isDuplicateSlmTask) {
+              const generator = Highlight.inference.getTextPrediction(
+                [{role: 'system', content: llm_system_prompt},
+                 {role: 'user', content: user_prompt}]);
+              let llmTask: string = '';
 
-            if (await isDuplicateTask(taskText)) {
-              return;
-            }
-            const generator = Highlight.inference.getTextPrediction(
-              [{role: 'system', content: system_prompt},
-               {role: 'user', content: user_prompt}]);
-            let llmTask: string = '';
-
-            for await (const part of generator) {
-              llmTask += part;
-            }
-            console.log('llmTask : ', llmTask);
-            // check if llmTask contains "Task not assigned" substring
-            if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
-              // Use the regex to replace any variation of "Task assigned :" with an empty string
-              const taskText = llmTask.replace(/Task assigned\s*:\s*/, "");
-              if (!await isDuplicateTask(taskText)) {
-                await addTask(taskText, 'automatically');
+              for await (const part of generator) {
+                llmTask += part;
               }
+              console.log('llmTask : ', llmTask);
+              
+              if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
+                const llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "");
+                
+                const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt);
+                
+                if (!isDuplicateLlmTask) {
+                  await addTask(llmTaskText, 'automatically', 'pending', user_prompt);
+                } else {
+                  console.log("Duplicate LLM task detected, skipping addition");
+                }
+              } else {
+                await addTask(slmTaskText, 'automatically', 'false_positive', user_prompt);
+              }
+            } else {
+              console.log("Duplicate SLM task detected, skipping addition");
             }
-            await addTask(taskText, 'automatically', 'false_positive');
           }
-
         } else {
           // console.log("Throttled: Context fetch not allowed yet");
         }
@@ -330,7 +399,7 @@ export function Todo() {
 
   const updateTodo = async (id: string, text: string) => {
     const todo = todos.find(todo => todo.id === id);
-    await Highlight.vectorDB.updateText(tableName, id, text,
+    await Highlight.vectorDB.updateText(tasksTableName, id, text,
       { status: todo?.status,
         additionMethod: todo?.additionMethod,
         lastModified: new Date().toISOString() });
@@ -340,7 +409,7 @@ export function Todo() {
   const toggleTodo = async (id: string) => {
     const todo = todos.find(todo => todo.id === id);
     const newStatus = todo?.status === 'completed' ? 'pending' : 'completed';
-    await Highlight.vectorDB.updateMetadata(tableName, id,
+    await Highlight.vectorDB.updateMetadata(tasksTableName, id,
       { status: newStatus,
         additionMethod: todo?.additionMethod,
         lastModified: new Date().toISOString() });
@@ -365,12 +434,12 @@ export function Todo() {
     const additionMethod = todos.find(todo => todo.id === id)?.additionMethod;
     if (additionMethod === 'automatically') {
       // For automatically added tasks, update the status to 'deleted' instead of deleting, so that we don't add it again
-      await Highlight.vectorDB.updateMetadata(tableName, id,
+      await Highlight.vectorDB.updateMetadata(tasksTableName, id,
         { status: 'deleted',
           additionMethod: additionMethod,
           lastModified: new Date().toISOString() });
     } else {
-      await Highlight.vectorDB.deleteItem(tableName, id);
+      await Highlight.vectorDB.deleteItem(tasksTableName, id);
     }
     loadTasks();
   };
@@ -483,7 +552,7 @@ export function Todo() {
             <ul className="list-disc pl-4 space-y-2">
               <li>To add a new todo, simply press <i>{hotKey}</i> while working on any application.</li>
               <li>In the highlight popup, use <i>Tab</i> key <b>OR</b> <i>click the drop down</i> to select <b>Todo List</b> app</li>
-              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo List</b></li>
+              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo list</b></li>
             </ul>
           </div>
           <div className="mb-2">

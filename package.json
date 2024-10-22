@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@highlight-ai/app-runtime": "^0.0.53",
+    "@highlight-ai/app-runtime": "latest",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.0",
     "@radix-ui/react-icons": "^1.3.0",
@@ -21,12 +21,14 @@
     "react": "^18.3.1",
     "react-dom": "^18",
     "tailwind-merge": "^2.5.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/uuid": "^10.0.0",
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
     "postcss": "^8",
