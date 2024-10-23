@@ -443,7 +443,7 @@ export function Todo() {
       const tagsSet = new Set<string>();
       taskObjects.forEach(task => {
         if (task.tags) {
-          task.tags.forEach(tag => tagsSet.add(tag.toLowerCase()));
+          task.tags.forEach((tag: string) => tagsSet.add(tag.toLowerCase()));
         }
       });
       
@@ -686,7 +686,7 @@ export function Todo() {
         loadTasks();
         
         // Update allTags
-        setAllTags(prev => new Set([...prev, tag.toLowerCase()]));
+        setAllTags(prev => new Set([...Array.from(prev), tag.toLowerCase()]));
       }
     }
   };
@@ -761,7 +761,7 @@ export function Todo() {
                   onClick={() => setIsEditingName(true)}
                   className="mt-1 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 >
-                  {name}'s workspace
+                  {name}&apos;s workspace
                 </button>
               )}
             </div>
