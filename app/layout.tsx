@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import { cn } from '@/lib/utils';
 import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider"
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,21 +17,26 @@ const fontBody = Inter({
   variable: '--font-body',
 });
 
-export default function Layout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body 
-        className={cn(
-          'antialiased',
-          fontHeading.variable,
-          fontBody.variable
-        )}
-      >
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className={cn(
+        'antialiased',
+        fontHeading.variable,
+        fontBody.variable
+      )}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

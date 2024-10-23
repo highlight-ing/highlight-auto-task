@@ -19,15 +19,32 @@ To read more about using these font, please visit the Next.js documentation:
 **/
 "use client"
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { 
+  Plus, 
+  Search, 
+  Tag, 
+  Trash2, 
+  AlertCircle,
+  ChevronDown,
+  MoreVertical,
+  CheckCircle2,
+  Circle,
+  UserIcon,
+  Moon,
+  Sun,
+  X
+} from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
 import { llm_system_prompt, slm_system_prompt } from './prompts';
+import { useTheme } from "next-themes"
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
 type AdditionMethodType = 'manually' | 'automatically' | 'semi_automatically';
@@ -38,7 +55,9 @@ export interface Task {
   status: StatusType;
   additionMethod: AdditionMethodType;
   fadingOut: boolean;
-  lastModified: string;  // ISO 8601 format
+  lastModified: string;
+  priority: 'high' | 'medium' | 'low';
+  tags: string[];  // Changed from single category to multiple tags
 }
 
 interface TodoItemProps {
@@ -46,84 +65,300 @@ interface TodoItemProps {
   onCheckedChange: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, text: string) => void;
+  onAddTag: (todoId: string, tag: string) => void;
+  onRemoveTag: (todoId: string, tag: string) => void; // Add this
+  allTags: Set<string>;
 }
 
-const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate }) => {
-  // State to toggle edit mode
+const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate, onAddTag, onRemoveTag, allTags }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTag, setNewTag] = useState("");
+  const [filteredTags, setFilteredTags] = useState<string[]>([]);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const tagPopupRef = useRef<HTMLDivElement>(null);
+  const todoItemRef = useRef<HTMLDivElement>(null);
+  const [showAbove, setShowAbove] = useState(false);
 
-  // Handle double click to toggle edit mode
-  const handleClick = () => {
-    setIsEditing(true);
+  const priorityColors = {
+    high: 'bg-red-50 border-red-200 hover:bg-red-100',
+    medium: 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100',
+    low: 'bg-green-50 border-green-200 hover:bg-green-100'
   };
 
+  const categoryColors = {
+    Development: 'text-purple-600 bg-purple-100',
+    Bugs: 'text-red-600 bg-red-100',
+    Feature: 'text-blue-600 bg-blue-100',
+    Design: 'text-green-600 bg-green-100'
+  };
+
+  // Get existing tags once
+  const existingTags = useMemo(() => 
+    Array.from(allTags).filter(tag => !todo.tags?.includes(tag)),
+    [allTags, todo.tags]
+  );
+
+  // Update filtered tags when search changes
+  useEffect(() => {
+    if (newTag.trim()) {
+      const filtered = existingTags.filter(tag => 
+        tag.toLowerCase().includes(newTag.toLowerCase())
+      );
+      setFilteredTags(filtered);
+    } else {
+      setFilteredTags(existingTags);
+    }
+  }, [newTag, existingTags]); // Only depend on newTag and existingTags
+
+  // Update edit text when todo changes
   useEffect(() => {
     setEditText(todo.text);
   }, [todo.text]);
 
-  // Handle input change
+  // Handle popup position
+  useEffect(() => {
+    const updatePopupPosition = () => {
+      if (todoItemRef.current && tagPopupRef.current) {
+        const todoRect = todoItemRef.current.getBoundingClientRect();
+        const popupHeight = tagPopupRef.current.offsetHeight;
+        const viewportHeight = window.innerHeight;
+        const spaceBelow = viewportHeight - todoRect.bottom;
+        setShowAbove(spaceBelow < (popupHeight + 10));
+      }
+    };
+
+    if (isAddingTag) {
+      updatePopupPosition();
+      window.addEventListener('scroll', updatePopupPosition, true);
+      window.addEventListener('resize', updatePopupPosition);
+    }
+
+    return () => {
+      window.removeEventListener('scroll', updatePopupPosition, true);
+      window.removeEventListener('resize', updatePopupPosition);
+    };
+  }, [isAddingTag]); // Only depend on isAddingTag
+
+  // Handle click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (isAddingTag && 
+          tagPopupRef.current && 
+          !tagPopupRef.current.contains(e.target as Node)) {
+        setIsAddingTag(false);
+        setNewTag("");
+      }
+    };
+
+    if (isAddingTag) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAddingTag]); // Only depend on isAddingTag
+
+  // Focus tag input when adding
+  useEffect(() => {
+    if (isAddingTag && tagInputRef.current) {
+      tagInputRef.current.focus();
+    }
+  }, [isAddingTag]); // Only depend on isAddingTag
+
+  const handleTagSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTag.trim()) {
+      onAddTag(todo.id, newTag.trim());
+      setNewTag("");
+      setIsAddingTag(false);
+    }
+  };
+
+  const handleTagSelect = (tag: string) => {
+    onAddTag(todo.id, tag);
+    setNewTag("");
+    setIsAddingTag(false);
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setIsAddingTag(false);
+      setNewTag("");
+    } else if (e.key === 'ArrowDown' && filteredTags.length > 0) {
+      e.preventDefault();
+      const firstTag = dropdownRef.current?.querySelector('button');
+      firstTag?.focus();
+    }
+  };
+
+  const handleClick = () => setIsEditing(true);
+  
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEditText(e.target.value);
   };
 
-  // Handle submission of the new text
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === 'Escape') {
       if (e.key === 'Enter') {
-        onUpdate(todo.id, editText);  // Call onUpdate with the new text
+        onUpdate(todo.id, editText);
       }
       setIsEditing(false);
-      setEditText(todo.text);  // Reset the input field on escape
+      setEditText(todo.text);
     }
   };
 
-  // Handle blur to exit edit mode
   const handleBlur = () => {
     onUpdate(todo.id, editText);
     setIsEditing(false);
   };
 
   return (
-    <div
-      className={`flex items-center justify-between bg-muted rounded-md px-3 py-2 ${
-        (todo.status === 'completed' || todo.fadingOut) ? "line-through text-muted-foreground" : "text-card-foreground"
-      } ${todo.fadingOut ? "fade-out" : ""}`}
+    <div 
+      ref={todoItemRef}
+      className="group relative rounded-xl border dark:border-gray-700 p-3 transition-all duration-200 hover:shadow-md dark:bg-gray-800/50 dark:hover:bg-gray-800/80"
     >
-      <div className="flex items-center flex-grow">
-        <Checkbox
-          id={`todo-${todo.id}`}
-          checked={todo.status === 'completed'}
-          className="mr-2"
-          onCheckedChange={() => onCheckedChange(todo.id)}
-        />
-        {isEditing ? (
-          <input
-            type="text"
-            value={editText}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            autoFocus
-            className="flex-grow mr-2 px-2 py-1 rounded-md"
-          />
-        ) : (
-          <label htmlFor={`todo-${todo.id}`} onClick={handleClick}>
-            {todo.text}
-          </label>
-        )}
+      <div className="flex items-start gap-3">
+        <button 
+          onClick={() => onCheckedChange(todo.id)} 
+          className="flex-shrink-0 mt-1 focus:outline-none"
+        >
+          {todo.status === 'completed' ? (
+            <CheckCircle2 className="w-5 h-5 text-blue-500 dark:text-blue-400" />
+          ) : (
+            <Circle className="w-5 h-5 text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" />
+          )}
+        </button>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            {isEditing ? (
+              <input
+                type="text"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                className="flex-grow px-2 py-1 text-sm rounded-md border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                autoFocus
+              />
+            ) : (
+              <span 
+                className={`text-base font-medium truncate cursor-pointer ${
+                  todo.status === 'completed' 
+                    ? 'line-through text-gray-400 dark:text-gray-500' 
+                    : 'text-gray-900 dark:text-gray-100'
+                }`} 
+                onClick={() => setIsEditing(true)}
+              >
+                {todo.text}
+              </span>
+            )}
+          </div>
+
+          {/* Updated Tags display with better spacing */}
+          {todo.tags && todo.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {todo.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center text-xs font-medium rounded-full bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 group/tag"
+                >
+                  <span className="px-2 py-0.5">#{tag}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveTag(todo.id, tag);
+                    }}
+                    className="w-0 group-hover/tag:w-4 overflow-hidden transition-all duration-200 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-r-full"
+                  >
+                    <X className="w-3 h-3 mx-0.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-gray-500 hover:text-gray-700 p-1"
+            onClick={() => setIsAddingTag(true)}
+          >
+            <Tag className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-gray-500 hover:text-red-600 p-1"
+            onClick={() => onDelete(todo.id)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => onDelete(todo.id)}
-        className="text-muted-foreground hover:text-card-foreground"
-      >
-        <Trash2Icon className="w-4 h-4" />
-      </Button>
+
+      {/* Tag Popup */}
+      {isAddingTag && (
+        <div 
+          ref={tagPopupRef}
+          className={`absolute ${
+            showAbove 
+              ? 'bottom-full mb-2' 
+              : 'top-full mt-2'
+          } right-0 z-10 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/50`}
+        >
+          <div className="p-2">
+            <form onSubmit={handleTagSubmit} className="flex items-center gap-2">
+              <Input
+                ref={tagInputRef}
+                type="text"
+                placeholder="Add tag..."
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                className="text-sm w-48 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+                autoFocus
+              />
+              <Button 
+                type="submit" 
+                size="sm" 
+                variant="ghost" 
+                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                Add
+              </Button>
+            </form>
+          </div>
+
+          {/* Existing Tags Dropdown */}
+          {filteredTags.length > 0 && (
+            <div 
+              ref={dropdownRef}
+              className="border-t dark:border-gray-700 overflow-y-auto p-1"
+            >
+              {filteredTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => handleTagSelect(tag)}
+                  className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-md focus:bg-gray-100 dark:focus:bg-gray-700/50 focus:outline-none flex items-center gap-2"
+                >
+                  <Tag className="w-3 h-3" />
+                  <span>{tag}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
-}
+};
 
 export function Todo() {
   const lastCallTime = useRef(0);
@@ -132,18 +367,24 @@ export function Todo() {
   const { name, handleNameUpdate } = useName(); // Destructure name and handleNameUpdate from the context
   const [ userName, setUserName] = useState(name);
   const nameRef = useRef(name); // Ref to hold the current name
+  const [searchQuery, setSearchQuery] = useState("");
+  const [inputText, setInputText] = useState("");
 
   const [isEditingName, setIsEditingName] = useState(false)
   const [showCompletedTodos, setShowCompletedTodos] = useState(false)
   const [showHelpSection, setShowHelpSection] = useState(false)
   const [hotKey, setHotKey] = useState("")
-  const completedTodos = todos.filter((todo) => todo.status === 'completed')
-  const incompleteTodos = todos.filter((todo) => todo.status === 'pending')
   const [slmCapable, setSlmCapable] = useState(false);
+  const [newTaskText, setNewTaskText] = useState("");
 
   const tasksTableName = "tasks";
   const sourcesTableName = "sources";
 
+  const [allTags, setAllTags] = useState<Set<string>>(new Set());
+  const [activeTag, setActiveTag] = useState<string>("all");
+  const [isAddingTag, setIsAddingTag] = useState<{todoId: string; isOpen: boolean}>({ todoId: '', isOpen: false });
+  const { theme, setTheme } = useTheme()
+  
   useEffect(() => {
     nameRef.current = name;
   }, [name]);
@@ -185,44 +426,6 @@ export function Todo() {
 
   // Load tasks from the VectorDB
   const loadTasks = async () => {
-    const tasksTableName = "tasks";
-    const sourcesTableName = "sources";
-
-    let recreateTables = false;
-
-    try {
-      const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
-      const sourceIds = new Set();
-
-      const sources = await Highlight.vectorDB.getAllItems(sourcesTableName);
-      sources.forEach(source => sourceIds.add(source.metadata.sourceId));
-
-      for (const task of tasks) {
-        if (task.metadata.sourceId && !sourceIds.has(task.metadata.sourceId)) {
-          recreateTables = true;
-          break;
-        }
-      }
-    } catch (error) {
-      console.log("Error getting tasks: ", error);
-    }
-
-    // Recreate tables if necessary
-    if (recreateTables) {
-      console.log("Recreating tables");
-      // check if tables exist, if it does, delete them else create them
-      try {
-        await Highlight.vectorDB.deleteTable(tasksTableName);
-      } catch (error) {
-        console.log("Error deleting table, recreating it");
-      }
-      await Highlight.vectorDB.createTable(tasksTableName);
-      await Highlight.vectorDB.createTable(sourcesTableName);
-      setTodos([]);
-      return;
-    }
-
-    // Load tasks if tables exist and are valid
     try {
       const tasks = await Highlight.vectorDB.getAllItems(tasksTableName);
       const taskObjects = tasks.map((task) => ({
@@ -231,9 +434,21 @@ export function Todo() {
         status: task.metadata.status,
         additionMethod: task.metadata.additionMethod,
         lastModified: task.metadata.lastModified,
-        fadingOut: false
+        fadingOut: false,
+        priority: task.metadata.priority,
+        tags: task.metadata.tags || [] // Ensure tags is always an array
       }));
+      
+      // Collect all unique tags from tasks
+      const tagsSet = new Set<string>();
+      taskObjects.forEach(task => {
+        if (task.tags) {
+          task.tags.forEach((tag: string) => tagsSet.add(tag.toLowerCase()));
+        }
+      });
+      
       setTodos(taskObjects);
+      setAllTags(tagsSet); // Update allTags with collected tags
     } catch (error) {
       console.log("Error getting tasks: ", error);
     }
@@ -389,13 +604,20 @@ export function Todo() {
     loadTasks();
   }, []);
 
-  const addTodo = async () => {
-    if (newTodo.trim() === "") {
-      return;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value;
+    setInputText(text);
+    setSearchQuery(text); // Update search query as user types
+  };
+
+  const handleNewTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputText.trim()) {
+      await addTask(inputText, 'manually', 'pending');
+      setInputText(""); // Clear input after adding task
+      setSearchQuery(""); // Clear search query
     }
-    await addTask(newTodo, 'manually');
-    setNewTodo("");
-  }
+  };
 
   const updateTodo = async (id: string, text: string) => {
     const todo = todos.find(todo => todo.id === id);
@@ -449,235 +671,222 @@ export function Todo() {
     setShowHelpSection(!showHelpSection);
   }
 
+  // Function to add tag to a todo
+  const addTagToTodo = async (todoId: string, tag: string) => {
+    const todo = todos.find(t => t.id === todoId);
+    if (todo) {
+      const newTags = [...(todo.tags || [])];
+      if (!newTags.includes(tag.toLowerCase())) {
+        newTags.push(tag.toLowerCase());
+        await Highlight.vectorDB.updateMetadata(tasksTableName, todoId, {
+          ...todo,
+          tags: newTags,
+          lastModified: new Date().toISOString()
+        });
+        loadTasks();
+        
+        // Update allTags
+        setAllTags(prev => new Set([...Array.from(prev), tag.toLowerCase()]));
+      }
+    }
+  };
+
+  // Add function to remove tag from a todo
+  const removeTagFromTodo = async (todoId: string, tagToRemove: string) => {
+    const todo = todos.find(t => t.id === todoId);
+    if (todo) {
+      const newTags = todo.tags.filter(tag => tag !== tagToRemove);
+      await Highlight.vectorDB.updateMetadata(tasksTableName, todoId, {
+        ...todo,
+        tags: newTags,
+        lastModified: new Date().toISOString()
+      });
+      
+      // Check if this tag is used by any other todos
+      const isTagUsedElsewhere = todos.some(t => 
+        t.id !== todoId && t.tags && t.tags.includes(tagToRemove)
+      );
+      
+      // If tag is not used elsewhere, remove it from allTags
+      if (!isTagUsedElsewhere) {
+        const updatedTags = new Set(allTags);
+        updatedTags.delete(tagToRemove);
+        setAllTags(updatedTags);
+        
+        // If the removed tag was active, switch to 'all'
+        if (activeTag === tagToRemove) {
+          setActiveTag('all');
+        }
+      }
+      
+      loadTasks();
+    }
+  };
+
+  // Filter todos based on active tag and search
+  const filteredTodos = todos
+    .filter(todo => {
+      const matchesTag = activeTag === "all" || (todo.tags && todo.tags.includes(activeTag));
+      const matchesSearch = searchQuery 
+        ? todo.text.toLowerCase().includes(searchQuery.toLowerCase())
+        : true;
+      return matchesTag && matchesSearch;
+    })
+    .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background">
-      {/* Todo List Box */}
-      <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative mb-4">
-        <div className="absolute top-4 right-4 flex items-center space-x-2">
-          <UserIcon className="w-5 h-5" />
-          {isEditingName ? (
-            <div className="flex items-center">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8">
+      <Card className="max-w-4xl mx-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+        {/* Header Section */}
+        <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
+          <div className="flex items-center justify-between mb-2"> {/* Reduced margin */}
+            <div className="flex flex-col"> {/* Changed to flex-col for better alignment */}
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+                Tasks
+              </h1>
+              {isEditingName ? (
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => handleNameUpdate(e.target.value)}
+                  onBlur={() => setIsEditingName(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setIsEditingName(false);
+                  }}
+                  className="mt-1 px-0 text-sm text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-300 dark:border-gray-700 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => setIsEditingName(true)}
+                  className="mt-1 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
+                  {name}&apos;s workspace
+                </button>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+          </div>
+
+          {/* Search/Add Task form */}
+          <form onSubmit={handleNewTaskSubmit} className="flex items-center gap-4 mt-3"> {/* Reduced margin */}
+            <div className="flex-1 relative">
+              <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
               <Input
                 type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                className="bg-input text-input-foreground rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="Add a new task or search..."
+                value={inputText}
+                onChange={handleInputChange}
+                className="w-full pl-10 dark:bg-gray-800 dark:border-gray-700"
               />
-              <Button
-                onClick={() => handleUserNameSave(userName)}
-                className="bg-primary text-primary-foreground rounded-md px-3 py-2 ml-2"
-              >
-                Save
-              </Button>
             </div>
-          ) : (
-            <div className="cursor-pointer hover:underline" onClick={handleUserNameEdit}>
-              {name}
+            <Button 
+              type="submit" 
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Task
+            </Button>
+          </form>
+        </div>
+
+        {/* Main Content */}
+        <CardContent className="p-4"> {/* Reduced padding */}
+          {/* Tags filter */}
+          {allTags.size > 0 && (
+            <div className="flex gap-2 mb-2 overflow-x-auto"> {/* Reduced margin */}
+              <Button
+                variant={activeTag === "all" ? "default" : "ghost"}
+                className={`rounded-full px-4 ${
+                  activeTag === "all"
+                    ? "bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-200"
+                }`}
+                onClick={() => setActiveTag("all")}
+              >
+                All Tasks
+              </Button>
+              {Array.from(allTags).map((tag) => (
+                <Button
+                  key={tag}
+                  variant={activeTag === tag ? "default" : "ghost"}
+                  className={`rounded-full px-4 ${
+                    activeTag === tag
+                      ? "bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700"
+                      : "hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-200"
+                  }`}
+                  onClick={() => setActiveTag(tag)}
+                >
+                  #{tag}
+                </Button>
+              ))}
             </div>
           )}
-        </div>
-        <h1 className="text-2xl font-bold mb-4 text-card-foreground">Todo List</h1>
-        <div className="flex items-center mb-4">
-          <Input
-            type="text"
-            placeholder="Add a new todo"
-            value={newTodo}
-            onChange={(e) => setNewTodo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                addTodo()
-              }
-            }}
-            className="flex-1 mr-2 bg-input text-input-foreground rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-          />
-          <Button onClick={addTodo} className="bg-primary text-primary-foreground rounded-md px-3 py-2">
-            Add
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {incompleteTodos.map((todo) => (
-            <TodoItem
-              key={todo.id}
-              todo={todo}
-              onCheckedChange={toggleTodoWithFadeOut}
-              onDelete={deleteTodo}
-              onUpdate={updateTodo}
-            />
-          ))}
-        </div>
-        <Collapsible
-          open={showCompletedTodos}
-          onOpenChange={() => setShowCompletedTodos(!showCompletedTodos)}
-          className="mt-4"
-        >
-          <div className="flex justify-end">
-            <CollapsibleTrigger className="flex items-center bg-muted rounded-md px-3 py-2 cursor-pointer justify-between">
-              <div className="flex items-center">
-                {showCompletedTodos ? (
-                    <>
-                      <ChevronDownIcon className="w-4 h-4 mr-2" />
-                      Hide Completed Items
-                    </>
-                  ) : (
-                    <>
-                      <ChevronRightIcon className="w-4 h-4 mr-2" />
-                      Show Completed Items
-                    </>
-                  )}
-              </div>
+
+          {/* Tasks list */}
+          <div className="space-y-2 bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 mt-2"> {/* Adjusted spacing */}
+            {filteredTodos
+              .filter(todo => todo.status === 'pending')
+              .map((todo) => (
+                <TodoItem
+                  key={todo.id}
+                  todo={todo}
+                  onCheckedChange={toggleTodo}
+                  onDelete={deleteTodo}
+                  onUpdate={updateTodo}
+                  onAddTag={addTagToTodo}
+                  onRemoveTag={removeTagFromTodo} // Add this
+                  allTags={allTags}
+                />
+              ))}
+          </div>
+
+          {/* Completed Tasks Section */}
+          <Collapsible
+            open={showCompletedTodos}
+            onOpenChange={setShowCompletedTodos}
+            className="mt-4"
+          >
+            <CollapsibleTrigger 
+              className="flex items-center justify-between w-full p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors duration-200 dark:text-gray-300"
+            >
+              <span className="flex items-center gap-2">
+                <ChevronDown 
+                  className={`w-4 h-4 transition-transform ${
+                    showCompletedTodos ? 'rotate-180' : ''
+                  }`} 
+                />
+                {showCompletedTodos ? 'Hide' : 'Show'} Completed Tasks
+              </span>
             </CollapsibleTrigger>
-          </div>
-          <CollapsibleContent className="space-y-2 mt-2">
-            {completedTodos.map((todo) => (
-              <TodoItem
-                key={todo.id}
-                todo={todo}
-                onCheckedChange={toggleTodo}
-                onDelete={deleteTodo}
-                onUpdate={updateTodo}
-              />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
-      {/* Help Section */}
-      {showHelpSection && (
-        <div className="w-full max-w-4xl p-6 bg-card rounded-lg shadow-md relative">
-          <h2 className="text-xl font-bold mb-4 text-card-foreground">How to Use</h2>
-          <button onClick={toggleHelp} className="absolute top-1 right-1 text-muted-foreground hover:text-card-foreground">
-            <CloseIcon />
-          </button>
-          <div className="mb-2">
-            <h3 className="text-lg font-bold mb-2">Semi Automatic</h3>
-            <ul className="list-disc pl-4 space-y-2">
-              <li>To add a new todo, simply press <i>{hotKey}</i> while working on any application.</li>
-              <li>In the highlight popup, use <i>Tab</i> key <b>OR</b> <i>click the drop down</i> to select <b>Todo List</b> app</li>
-              <li>Now the Todo suggestions should get listed based the your screen contents. Simply click the suitable suggestion to add it to the <b>Todo list</b></li>
-            </ul>
-          </div>
-          <div className="mb-2">
-            <h3 className="text-lg font-bold mb-2">Fully Automatic</h3>
-            <ul className="list-disc pl-4 space-y-2">
-              {slmCapable ? (
-                <>
-                  <li>Just sit back and relax. We will automatically add items the <b>Todo list</b> based on your screen contents.</li>
-                  <li>Just ensure you have notification enabled for Highlight in your OS settings.</li>
-                  <li>We will send a notification whenever we add an item to your <b>Todo list</b></li>
-                  <li>Currently fully automatic mode is supported only for Slack. Support for more apps coming soon.</li>
-                </>
-              ) : (
-                <li>Sorry. Your device does not support fully automatic task detection.</li>
-              )}
-            </ul>
-          </div>
-        </div>
-      )}
-      {/* "?" Button */}
-      {!showHelpSection && (
-        <button onClick={toggleHelp} className="fixed bottom-4 right-4 text-muted-foreground hover:text-card-foreground">
-          <QuestionIcon />
-        </button>
-      )}
+            <CollapsibleContent className="space-y-2 mt-2">
+              {filteredTodos
+                .filter(todo => todo.status === 'completed')
+                .map((todo) => (
+                  <TodoItem
+                    key={todo.id}
+                    todo={todo}
+                    onCheckedChange={toggleTodo}
+                    onDelete={deleteTodo}
+                    onUpdate={updateTodo}
+                    onAddTag={addTagToTodo}
+                    onRemoveTag={removeTagFromTodo} // Add this
+                    allTags={allTags}
+                  />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+      </Card>
     </div>
-  )
-}
-
-function ChevronRightIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  )
-}
-
-function ChevronDownIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  )
-}
-
-function Trash2Icon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 6h18" />
-      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-      <line x1="10" x2="10" y1="11" y2="17" />
-      <line x1="14" x2="14" y1="11" y2="17" />
-    </svg>
-  )
-}
-
-function CloseIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18"></line>
-      <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
   );
-}
-
-function QuestionIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 19h0" />
-      <path d="M9.09 9a3 3 0 0 1 5.83-1c.11.21.18.45.18.7 0 1.11-1.47 1.61-2.18 2.22-.52.45-.83.78-.83 1.36v.93" />
-      <circle cx="12" cy="12" r="10" />
-    </svg>
-  );
-}
-
-function UserIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  )
 }
