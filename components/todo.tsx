@@ -43,7 +43,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
-import { llm_system_prompt, slm_system_prompt } from './prompts';
+import { tasks_system_prompt, conversations_system_prompt } from './prompts';
 import { useTheme } from "next-themes"
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
@@ -57,6 +57,7 @@ export interface Task {
   fadingOut: boolean;
   lastModified: string;
   priority: 'high' | 'medium' | 'low';
+  sourceId: string;
   tags: string[];  // Changed from single category to multiple tags
 }
 
@@ -361,7 +362,8 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 };
 
 export function Todo() {
-  const lastCallTime = useRef(0);
+  const lastAppsCheckTime = useRef(0);
+  const lastConversationsCheckTime = useRef(0);
   const [todos, setTodos] = useState<Task[]>([]);
   const [newTodo, setNewTodo] = useState("")
   const { name, handleNameUpdate } = useName(); // Destructure name and handleNameUpdate from the context
@@ -436,6 +438,7 @@ export function Todo() {
         lastModified: task.metadata.lastModified,
         fadingOut: false,
         priority: task.metadata.priority,
+        sourceId: task.metadata.sourceId,
         tags: task.metadata.tags || [] // Ensure tags is always an array
       }));
       
@@ -455,19 +458,27 @@ export function Todo() {
   };
 
   const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
+    // Search for only the most similar task
     const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
-    
-    if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.35) {
-      const existingTask = similarTasks[0];
-      const metadata = JSON.parse(existingTask.metadata);
+
+    if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.30) {
+      const task = similarTasks[0];
+      const metadata = JSON.parse(task.metadata);
       const existingSourceId = metadata.sourceId;
 
+      // If task is pending, mark as duplicate immediately
+      if (metadata.status === 'pending') {
+        console.log("Similar task is already pending - marking as duplicate");
+        return true;
+      }
+
+      // Get source similarity if sourceId exists
       if (existingSourceId) {
         const existingSources = await Highlight.vectorDB.getAllItems(sourcesTableName);
         const existingSource = existingSources.find(source => source.metadata.sourceId === existingSourceId);
         const existingSourceVector = existingSource?.vector;
 
-        let newSourceEmbedding;
+        let newSourceEmbedding
         try {
           newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
         } catch (error) {
@@ -476,11 +487,17 @@ export function Todo() {
         }
 
         const similarity = cosineSimilarity(existingSourceVector, newSourceEmbedding);
-        console.log("Task similarity: ", Math.abs(similarTasks[0].distance));
-        console.log("Source similarity: ", similarity);
-        
-        if (similarity > 0.85) {
+
+        // Case 1: Task is completed/deleted and source is similar - mark as duplicate
+        if ((metadata.status === 'completed' || metadata.status === 'deleted') && similarity > 0.85) {
+          console.log("Task already completed with similar source - marking as duplicate");
           return true;
+        }
+        
+        // Case 2: Task is completed/deleted but source is different - allow new task creation
+        if ((metadata.status === 'completed' || metadata.status === 'deleted') && similarity <= 0.85) {
+          console.log("Task was completed but has new source - allowing new task creation");
+          return false;
         }
       }
     }
@@ -532,63 +549,159 @@ export function Todo() {
 
   useEffect(() => {
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
-      if (!slmCapable) {
-        return;
-      }
-      console.log(context);
-      // Check if it is slack
-      if (context.url?.includes("app.slack.com") || context.appName === "Slack") {
-        const now = Date.now();
-        if (now - lastCallTime.current >= 15000) { // 15 seconds
-          lastCallTime.current = now;
-          console.log("Slack is open");
-          const context = await Highlight.user.getContext(true)
-          let user_prompt = "\nName of the User : " + nameRef.current +  ".\nConversation : " + context.environment.ocrScreenContents;
-          console.log("User Prompt : ", user_prompt);
-          user_prompt = user_prompt.replace(new RegExp("@+" + nameRef.current, 'g'), nameRef.current);
-          
-          const slmTask = await Highlight.inference.getTextPredictionSlm(
-            [{role: 'system', content: slm_system_prompt},
-             {role: 'user', content: user_prompt}],
-            grammar);
-          console.log('slmTask : ', slmTask);
-          
-          if (slmTask.startsWith("Task assigned : ")) {
-            const slmTaskText = slmTask.replace("Task assigned : ", "");
-            
-            const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt);
-            
-            if (!isDuplicateSlmTask) {
-              const generator = Highlight.inference.getTextPrediction(
-                [{role: 'system', content: llm_system_prompt},
-                 {role: 'user', content: user_prompt}]);
-              let llmTask: string = '';
+      if (!slmCapable) return
 
-              for await (const part of generator) {
-                llmTask += part;
-              }
-              console.log('llmTask : ', llmTask);
+      const now = Date.now()
+      if (now - lastAppsCheckTime.current >= 15000) {
+        lastAppsCheckTime.current = now
+
+        console.log("Starting periodic apps check...")
+
+        // Handle apps flow first
+        const supportedApps = [
+          // Chat/Team Apps
+          "Slack",
+          // "Messages",
+          "app.slack.com",
+          "Microsoft Teams",
+          "teams.microsoft.com",
+          // "Discord",
+          // "discord.com",
+          "Telegram",
+          "telegram.org",
+          "WhatsApp",
+          "web.whatsapp.com",
+          
+          // Email Apps
+          "Outlook",
+          "outlook.office.com",
+          "mail.google.com",
+          "Superhuman",
+          "Mail",
+          "ProtonMail",
+          "mail.proton.me",
+          "Thunderbird"
+        ]
+        if (supportedApps.some(app => 
+          context.appName === app || 
+          (context.url && context.url.includes(app))
+        )) {
+          console.log("Processing supported app:", context.appName || context.url)
+          const userContext = await Highlight.user.getContext(true)
+          const screenContent = userContext.environment.ocrScreenContents ?? ""
+
+          // Check for duplicate screen content
+          const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
+          if (!isDuplicateScreen) {
+            let user_prompt = `Name of the User: ${nameRef.current}\nConversation: ${screenContent}`
+            console.log("User prompt:", user_prompt)
+            const slmTask = await Highlight.inference.getTextPredictionSlm(
+              [{role: 'system', content: tasks_system_prompt},
+              {role: 'user', content: user_prompt}],
+              grammar
+            )
+
+            if (slmTask.startsWith("Task assigned : ")) {
+              const slmTaskText = slmTask.replace("Task assigned : ", "")
+              console.log("SLM found potential task:", slmTaskText)
               
-              if (!llmTask.includes("Task not assigned") && /Task assigned\s*:\s*/.test(llmTask)) {
-                const llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "");
+              const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt)
+              if (!isDuplicateSlmTask) {
+                console.log("Running LLM verification...")
+                const generator = Highlight.inference.getTextPrediction(
+                  [{role: 'system', content: tasks_system_prompt},
+                  {role: 'user', content: user_prompt}]
+                )
                 
-                const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt);
+                let llmTask = ''
+                for await (const part of generator) {
+                  llmTask += part
+                }
                 
-                if (!isDuplicateLlmTask) {
-                  await addTask(llmTaskText, 'automatically', 'pending', user_prompt);
+                if (llmTask.includes("Task assigned : ")) {
+                  const llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "")
+                  console.log("LLM verified task:", llmTaskText)
+                  
+                  const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt)
+                  if (!isDuplicateLlmTask) {
+                    await addTask(llmTaskText, 'automatically', 'pending', user_prompt)
+                    console.log("Added new task from app content:", llmTaskText)
+                  } else {
+                    console.log("Duplicate LLM task detected from apps, skipping addition")
+                  }
                 } else {
-                  console.log("Duplicate LLM task detected, skipping addition");
+                  await addTask(slmTaskText, 'automatically', 'false_positive', user_prompt)
+                  console.log("Added false positive task from SLM")
                 }
               } else {
-                await addTask(slmTaskText, 'automatically', 'false_positive', user_prompt);
+                console.log("Duplicate SLM task detected from apps, skipping LLM call")
               }
             } else {
-              console.log("Duplicate SLM task detected, skipping addition");
+              console.log("No task found in SLM")
             }
+          } else {
+            console.log("Duplicate screen content detected, skipping SLM call")
           }
-        } else {
-          // console.log("Throttled: Context fetch not allowed yet");
         }
+        console.log("Periodic check for apps completed")
+      }
+
+      if (now - lastConversationsCheckTime.current >= 300000) {
+        lastConversationsCheckTime.current = now
+
+        console.log("Starting periodic conversations check...")
+
+        // Then handle conversations flow independently
+        // Log available conversations first
+        const conversations = await Highlight.conversations.getAllConversations()
+        // console.log("Found conversations:", conversations.length)
+        if (conversations.length > 0) {
+          // console.log("Recent transcripts:", conversations.slice(0, 2).map(conv => conv.transcript))
+          // console.log("Processing conversations...")
+          const recentTranscripts = conversations
+            .slice(0, 2)
+            .map(conv => conv.transcript)
+            .join("\n")
+
+          console.log("Recent transcripts:", recentTranscripts)
+
+          const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
+          if (!isDuplicateInput) {
+            const conversations_prompt = [
+              `Name of the User: ${nameRef.current}`,
+              `Recent Conversations: ${recentTranscripts}`
+            ].join("\n")
+
+            console.log("Running LLM for conversations...")
+            const generator = Highlight.inference.getTextPrediction(
+              [{role: 'system', content: conversations_system_prompt},
+              {role: 'user', content: conversations_prompt}]
+            )
+
+            let llmTask = ''
+            for await (const part of generator) {
+              llmTask += part
+            }
+
+            if (llmTask.includes("Task assigned : ")) {
+              const taskText = llmTask.replace(/Task assigned\s*:\s*/, "")
+              console.log("LLM found potential task from conversations:", taskText)
+              
+              const isDuplicateLlmTask = await isDuplicateTask(taskText, conversations_prompt)
+              if (!isDuplicateLlmTask) {
+                await addTask(taskText, 'automatically', 'pending', conversations_prompt)
+                console.log("Added new task from conversations:", taskText)
+              } else {
+                console.log("Duplicate task detected from conversations, skipping addition")
+              }
+            } else {
+              console.log("No task found in conversations")
+            }
+          } else {
+            console.log("Duplicate conversation detected, skipping LLM call")
+          }
+        }
+        console.log("Periodic check for conversations completed")
       }
     };
 
@@ -634,7 +747,8 @@ export function Todo() {
     await Highlight.vectorDB.updateMetadata(tasksTableName, id,
       { status: newStatus,
         additionMethod: todo?.additionMethod,
-        lastModified: new Date().toISOString() });
+        lastModified: new Date().toISOString(),
+        sourceId: todo?.sourceId });
     loadTasks();
   }
 
@@ -653,13 +767,15 @@ export function Todo() {
   };
 
   const deleteTodo = async (id: string) => {
-    const additionMethod = todos.find(todo => todo.id === id)?.additionMethod;
+    const todo = todos.find(todo => todo.id === id);
+    const additionMethod = todo?.additionMethod;
     if (additionMethod === 'automatically') {
       // For automatically added tasks, update the status to 'deleted' instead of deleting, so that we don't add it again
       await Highlight.vectorDB.updateMetadata(tasksTableName, id,
         { status: 'deleted',
           additionMethod: additionMethod,
-          lastModified: new Date().toISOString() });
+          lastModified: new Date().toISOString(),
+          sourceId: todo?.sourceId });
     } else {
       await Highlight.vectorDB.deleteItem(tasksTableName, id);
     }
