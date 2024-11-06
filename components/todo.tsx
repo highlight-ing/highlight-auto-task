@@ -594,7 +594,6 @@ export function Todo() {
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
             let user_prompt = `Name of the User: ${nameRef.current}\nConversation: ${screenContent}`
-            console.log("User prompt:", user_prompt)
             const slmTask = await Highlight.inference.getTextPredictionSlm(
               [{role: 'system', content: tasks_system_prompt},
               {role: 'user', content: user_prompt}],
@@ -662,8 +661,6 @@ export function Todo() {
             .slice(0, 2)
             .map(conv => conv.transcript)
             .join("\n")
-
-          console.log("Recent transcripts:", recentTranscripts)
 
           const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
           if (!isDuplicateInput) {
