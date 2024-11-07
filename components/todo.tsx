@@ -472,6 +472,10 @@ export function Todo() {
         return true;
       }
 
+      if (userPrompt=='conversations') {
+        return true
+      }
+
       // Get source similarity if sourceId exists
       if (existingSourceId) {
         const existingSources = await Highlight.vectorDB.getAllItems(sourcesTableName);
@@ -684,9 +688,9 @@ export function Todo() {
               const taskText = llmTask.replace(/Task assigned\s*:\s*/, "")
               console.log("LLM found potential task from conversations:", taskText)
               
-              const isDuplicateLlmTask = await isDuplicateTask(taskText, conversations_prompt)
+              const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
               if (!isDuplicateLlmTask) {
-                await addTask(taskText, 'automatically', 'pending', conversations_prompt)
+                await addTask(taskText, 'automatically', 'pending', 'conversations')
                 console.log("Added new task from conversations:", taskText)
               } else {
                 console.log("Duplicate task detected from conversations, skipping addition")
