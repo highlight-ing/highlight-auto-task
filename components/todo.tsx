@@ -663,8 +663,8 @@ export function Todo() {
           // console.log("Processing conversations...")
           const recentTranscripts = conversations
             .slice(0, 2)
-            .map(conv => conv.transcript)
-            .join("\n")
+            .map((conv, index) => `Transcript ${index + 1}:\n${conv.transcript}`)
+            .join("\n\n---\n\n")
 
           const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
           if (!isDuplicateInput) {
