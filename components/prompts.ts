@@ -17,6 +17,12 @@ const tasks_system_prompt = `You are a helpful AI assistant designed to analyze 
   const conversations_system_prompt = `You are a task extraction assistant. 
   Your job is to analyze conversation transcripts and identify potential tasks.
   Only extract clear, actionable tasks that were discussed and assigned to the user.
+  
+  Important: When matching names in the conversation:
+  - Be flexible with name spellings and variations (e.g., "Jon"/"John", "Mike"/"Mic", "Catherine"/"Katherine")
+  - Consider common transcription errors (merged names, split names, or slight misspellings)
+  - Match partial names or nicknames to full names (e.g., "Bob" for "Robert", "Dave" for "David")
+  
   If i assign a task to someone in that conversation, then create a task to follow up on it with that person.
   If you find a task, respond with "Task assigned : <task description>"
   If no clear task is found, respond with "Task not assigned"
