@@ -58,6 +58,7 @@ export interface Task {
   priority: 'high' | 'medium' | 'low';
   sourceId: string;
   tags: string[];  // Changed from single category to multiple tags
+  assignedBy?: string;
 }
 
 interface TodoItemProps {
@@ -293,6 +294,15 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
               ))}
             </div>
           )}
+
+          {todo.assignedBy && (
+            <div className="flex items-center gap-1 mt-1">
+              <UserIcon className="w-3 h-3 text-gray-400" />
+              <span className="text-xs text-gray-500">
+                Assigned by {todo.assignedBy}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -503,7 +513,8 @@ export function Todo() {
         fadingOut: false,
         priority: task.metadata.priority,
         sourceId: task.metadata.sourceId,
-        tags: task.metadata.tags || [] // Ensure tags is always an array
+        tags: task.metadata.tags || [], // Ensure tags is always an array
+        assignedBy: task.metadata.assignedBy || 'unknown'
       }));
       
       // Collect all unique tags from tasks
