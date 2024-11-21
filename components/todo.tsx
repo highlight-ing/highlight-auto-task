@@ -42,7 +42,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
-import { tasks_system_prompt, conversations_system_prompt, overall_conversations_system_prompt } from './prompts';
+import { tasks_system_prompt_slm, tasks_system_prompt_llm, conversations_system_prompt, overall_conversations_system_prompt } from './prompts';
 import { useTheme } from "next-themes"
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
@@ -72,9 +72,8 @@ interface TodoItemProps {
 
 interface DetectedTask {
   id: string
+  metadata: Record<string, any>
   text: string
-  userPrompt: string
-  timestamp: number
 }
 
 interface DetectedTasksCardProps {
@@ -374,7 +373,9 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 };
 
 function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProps) {
-  if (tasks.length === 0) return null
+  const sortedTasks = [...tasks].sort((a, b) => new Date(b.metadata.lastModified).getTime() - new Date(a.metadata.lastModified).getTime())
+
+  if (sortedTasks.length === 0) return null
 
   return (
     <Card className="w-80 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
@@ -385,7 +386,7 @@ function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProp
       </div>
       <CardContent className="p-4">
         <div className="space-y-3">
-          {tasks.map((task) => (
+          {sortedTasks.map((task) => (
             <div 
               key={task.id}
               className="p-3 rounded-lg border dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
@@ -441,6 +442,7 @@ export function Todo() {
 
   const tasksTableName = "tasks";
   const sourcesTableName = "sources";
+  const detectedTasksTableName = "detectedTasks";
 
   const [allTags, setAllTags] = useState<Set<string>>(new Set());
   const [activeTag, setActiveTag] = useState<string>("all");
@@ -519,11 +521,32 @@ export function Todo() {
     }
   };
 
+  const loadDetectedTasks = async () => {
+    try {
+      const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName);
+      const pendingTasks = tasks
+        .filter(task => task.metadata.status === 'pending');
+      
+      // Only update state if there are pending tasks
+      if (pendingTasks.length > 0) {
+        setDetectedTasks(pendingTasks); 
+        console.log("Loaded pending detected tasks:", pendingTasks);
+      }
+    } catch (error) {
+      console.error("Failed to load detected tasks:", error);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      await Promise.all([loadTasks(), loadDetectedTasks()])
+    }
+    init()
+  }, [])
+
   const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
     // Search for only the most similar task
     const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
-
-    console.log("Similar tasks:", similarTasks)
 
     if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.30) {
       const task = similarTasks[0];
@@ -537,7 +560,7 @@ export function Todo() {
       }
 
       if (userPrompt=='conversations') {
-        return true
+        return true;
       }
 
       // Get source similarity if sourceId exists
@@ -546,7 +569,7 @@ export function Todo() {
         const existingSource = existingSources.find(source => source.metadata.sourceId === existingSourceId);
         const existingSourceVector = existingSource?.vector;
 
-        let newSourceEmbedding
+        let newSourceEmbedding;
         try {
           newSourceEmbedding = await Highlight.inference.getEmbedding(userPrompt);
         } catch (error) {
@@ -569,45 +592,79 @@ export function Todo() {
         }
       }
     }
+
+    // Then check detected tasks
+    const similarDetectedTasks = await Highlight.vectorDB.search(detectedTasksTableName, taskText, 1);
+    if (similarDetectedTasks.length > 0 && Math.abs(similarDetectedTasks[0].distance) < 0.30) {
+      console.log("Similar task already detected - skipping");
+      return true;
+    }
+
     return false;
-  }
+  };
 
-  const insertTaskWithSource = async (
-    task: string, 
-    status: StatusType, 
-    additionMethod: AdditionMethodType, 
-    userPrompt?: string
-  ) => {
-    const sourceId = uuidv4()
-    await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt ?? "", { sourceId })
-    
-    await Highlight.vectorDB.insertItem(tasksTableName, task, {
-      status,
-      additionMethod,
-      lastModified: new Date().toISOString(),
-      sourceId
-    })
-    
-    if (status === 'pending') {
-      loadTasks()
+  const addTask = async (task: DetectedTask) => {
+      await Highlight.app.showNotification('New task detected:', task.text);
+      await Highlight.vectorDB.insertItem(tasksTableName, task.text, task.metadata);
+      
+    if (task.metadata.status === 'pending') {
+      loadTasks();
     }
-    
-    console.log(`Task ${status === 'pending' ? 'added' : 'marked as ' + status}:`, task)
   }
 
-  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType, userPrompt?: string) => {
-    if (additionMethod === 'automatically') {
+  const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string) => {
+    try {
+      const sourceId = uuidv4()
+      await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt, { sourceId })
+      
+      await Highlight.vectorDB.insertItem(detectedTasksTableName, taskText, {
+        status: 'pending',
+        additionMethod: 'automatically',
+        lastModified: new Date().toISOString(),
+        sourceId,
+        assignedBy
+      })
+
+      // Get the task ID from the DB
+      const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName)
+      const task = tasks.find(t => t.text === taskText)
+      console.log("Task found:", task)
+      if (!task) throw new Error("Failed to find newly created task")
+
       const newTask: DetectedTask = {
-        id: uuidv4(),
-        text: task,
-        userPrompt: userPrompt || '',
-        timestamp: Date.now()
+        id: task.id,
+        metadata: task.metadata,
+        text: task.text
       }
+
       setDetectedTasks(prev => [...prev, newTask])
-      await Highlight.app.showNotification('New task detected:', task);
-    } else {
-      await insertTaskWithSource(task, status || 'pending', additionMethod, userPrompt)
+    } catch (error) {
+      console.error("Failed to store detected task:", error)
+      return null
     }
+  }
+
+  const handleAcceptTask = async (task: DetectedTask) => {
+    await addTask(task)
+    await Highlight.vectorDB.updateMetadata(detectedTasksTableName, task.id, {
+      additionMethod: 'automatically',
+      assignedBy: task.metadata.assignedBy || 'unknown',
+      lastModified: new Date().toISOString(),
+      sourceId: task.metadata.sourceId,
+      status: 'accepted',
+    })
+    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
+  }
+
+  const handleDeclineTask = async (task: DetectedTask) => {
+    await Highlight.vectorDB.updateMetadata(detectedTasksTableName, task.id, {
+      additionMethod: 'automatically',
+      assignedBy: task.metadata.assignedBy || 'unknown',
+      lastModified: new Date().toISOString(),
+      sourceId: task.metadata.sourceId,
+      status: 'declined',
+    })
+    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
   }
 
   // Helper function to calculate cosine similarity
@@ -621,7 +678,11 @@ export function Todo() {
   useEffect(() => {
     const destructor = Highlight.app.addListener('onContext', async (context: HighlightContext) => {
       if (context.suggestion) {
-        addTask(context.suggestion, 'semi_automatically');
+        addTask({
+          id: uuidv4(),
+          metadata: { status: 'pending', additionMethod: 'semi_automatically' },
+          text: context.suggestion
+        })
       }
     })
 
@@ -682,9 +743,8 @@ export function Todo() {
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
             let user_prompt = `Name of the User: ${nameRef.current}.\nConversation: ${screenContent}`
-            console.log("User prompt:", user_prompt)
             const slmTask = await Highlight.inference.getTextPredictionSlm(
-              [{role: 'system', content: tasks_system_prompt},
+              [{role: 'system', content: tasks_system_prompt_slm},
               {role: 'user', content: user_prompt}],
               grammar
             )
@@ -696,8 +756,9 @@ export function Todo() {
               const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt)
               if (!isDuplicateSlmTask) {
                 console.log("Running LLM verification...")
+                user_prompt = `Todays Date: ${new Date().toISOString().split('T')[0]}.\n${user_prompt}`
                 const generator = Highlight.inference.getTextPrediction(
-                  [{role: 'system', content: tasks_system_prompt},
+                  [{role: 'system', content: tasks_system_prompt_llm},
                   {role: 'user', content: user_prompt}]
                 )
                 
@@ -707,19 +768,20 @@ export function Todo() {
                 }
                 
                 if (llmTask.includes("Task assigned : ")) {
-                  const llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "")
+                  let llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "")
+                  const llmAssignedBy = llmTaskText.split(" Assigned by ")[1].replace(',', '').trim()
+                  llmTaskText = llmTaskText.split(" Assigned by ")[0].replace(',', '').trim()
+
                   console.log("LLM verified task:", llmTaskText)
                   
                   const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt)
                   if (!isDuplicateLlmTask) {
-                    await addTask(llmTaskText, 'automatically', 'pending', user_prompt)
-                    console.log("Added new task from app content:", llmTaskText)
+                    await storeDetectedTask(llmTaskText, llmAssignedBy, user_prompt)
                   } else {
                     console.log("Duplicate LLM task detected from apps, skipping addition")
                   }
                 } else {
-                  await addTask(slmTaskText, 'automatically', 'false_positive', user_prompt)
-                  console.log("Added false positive task from SLM")
+                  console.log("No task found by LLM")
                 }
               } else {
                 console.log("Duplicate SLM task detected from apps, skipping LLM call")
@@ -742,16 +804,11 @@ export function Todo() {
         // Then handle conversations flow independently
         // Log available conversations first
         const conversations = await Highlight.conversations.getAllConversations()
-        // console.log("Found conversations:", conversations.length)
         if (conversations.length > 0) {
-          // console.log("Recent transcripts:", conversations.slice(0, 2).map(conv => conv.transcript))
-          // console.log("Processing conversations...")
           const recentTranscripts = conversations
             .slice(0, 2)
             .map((conv, index) => `Transcript ${index + 1}:\n${conv.transcript}`)
             .join("\n\n---\n\n")
-
-          console.log("Recent transcripts:", recentTranscripts)
 
           // Check if conversation is one-sided
           const selfCount = (recentTranscripts.match(/self:/gi) || []).length
@@ -801,8 +858,7 @@ export function Todo() {
               
               const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
               if (!isDuplicateLlmTask) {
-                await addTask(taskText, 'automatically', 'pending', 'conversations')
-                console.log("Added new task from conversations:", taskText)
+                await storeDetectedTask(taskText, "unknown", 'conversations')
               } else {
                 console.log("Duplicate task detected from conversations, skipping addition")
               }
@@ -824,8 +880,7 @@ export function Todo() {
 
                     const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
                     if (!isDuplicateLlmTask) {
-                      await addTask(taskText, 'automatically', 'pending', 'conversations')
-                      console.log("Added new task from conversations:", taskText)
+                      await storeDetectedTask(taskText, "unknown", 'conversations')
                     } else {
                       console.log("Duplicate task detected from conversations, skipping addition")
                     }
@@ -852,10 +907,6 @@ export function Todo() {
     }
   });
 
-  useEffect(() => {
-    loadTasks();
-  }, []);
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     setInputText(text);
@@ -865,7 +916,11 @@ export function Todo() {
   const handleNewTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (inputText.trim()) {
-      await addTask(inputText, 'manually', 'pending');
+      await addTask({
+        id: uuidv4(),
+        metadata: { status: 'pending', additionMethod: 'manually' },
+        text: inputText
+      });
       setInputText(""); // Clear input after adding task
       setSearchQuery(""); // Clear search query
     }
@@ -988,16 +1043,6 @@ export function Todo() {
       return matchesTag && matchesSearch;
     })
     .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
-
-  const handleAcceptTask = async (task: DetectedTask) => {
-    await insertTaskWithSource(task.text, 'pending', 'automatically', task.userPrompt)
-    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
-  }
-
-  const handleDeclineTask = async (task: DetectedTask) => {
-    await insertTaskWithSource(task.text, 'false_positive', 'automatically', task.userPrompt)
-    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8">
