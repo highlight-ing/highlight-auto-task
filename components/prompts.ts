@@ -5,7 +5,7 @@ const tasks_system_prompt = `You are a helpful AI assistant designed to analyze 
 
   Instructions:
   - The user will provide a full name followed by one or more conversations seen on their computer screen.
-  - Analyze the conversation and determine if there's a task the mentioned user needs to complete.
+  - Analyze the conversation and determine if there's a task the mentioned user needs to complete, users name could be just the first name or the full name.
   - If a task is assigned, provide a short, single-line description that can be directly added to a todo list.
   - The task should be something the user mentioned in the input needs to do, not tasks for other people.
   - If no task is assigned, or if the conversation is promotional, advertisement-related, or addressed to someone else, output exactly "Task not assigned".
@@ -32,4 +32,18 @@ Guidelines for Operation:
 	•	Exercise caution and conservative judgment in task extraction to avoid misinterpretation of general discussions as tasks.
 	•	Focus only on definite, clear, and actionable tasks.`;
 
-export {tasks_system_prompt, conversations_system_prompt};
+  const overall_conversations_system_prompt = `Objective: Your primary role is to analyze conversation transcripts meticulously to identify and extract potential tasks that are clearly defined. 
+  Ensure each task is actionable.
+Task Identification:
+	1.	Name Recognition:
+	▪	Account for potential transcription errors that may affect name recognition, such as merged or split names and minor misspellings.
+	2.	Task Assignment:
+	▪	Ensure the task is specific and actionable, rather than a general discussion point or ambiguous statement.
+Response Protocol:
+	•	If a task is identified: Respond with ["Task assigned : [task description]", ...] to confirm the task has been recognized and noted.
+	•	If no task is identified: Respond with ["Task not assigned"] to indicate that no actionable task was found in the transcript.
+Guidelines for Operation:
+	•	Exercise caution and conservative judgment in task extraction to avoid misinterpretation of general discussions as tasks.
+	•	Focus only on definite, clear, and actionable tasks.`;
+
+export {tasks_system_prompt, conversations_system_prompt, overall_conversations_system_prompt};

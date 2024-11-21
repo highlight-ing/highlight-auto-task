@@ -23,7 +23,6 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { 
   Plus, 
   Search, 
@@ -43,7 +42,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
-import { tasks_system_prompt, conversations_system_prompt } from './prompts';
+import { tasks_system_prompt, conversations_system_prompt, overall_conversations_system_prompt } from './prompts';
 import { useTheme } from "next-themes"
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
@@ -69,6 +68,19 @@ interface TodoItemProps {
   onAddTag: (todoId: string, tag: string) => void;
   onRemoveTag: (todoId: string, tag: string) => void; // Add this
   allTags: Set<string>;
+}
+
+interface DetectedTask {
+  id: string
+  text: string
+  userPrompt: string
+  timestamp: number
+}
+
+interface DetectedTasksCardProps {
+  tasks: DetectedTask[]
+  onAccept: (task: DetectedTask) => void
+  onDecline: (task: DetectedTask) => void
 }
 
 const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate, onAddTag, onRemoveTag, allTags }) => {
@@ -361,6 +373,54 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   );
 };
 
+function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProps) {
+  if (tasks.length === 0) return null
+
+  return (
+    <Card className="w-80 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+      <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Detected Tasks
+        </h2>
+      </div>
+      <CardContent className="p-4">
+        <div className="space-y-3">
+          {tasks.map((task) => (
+            <div 
+              key={task.id}
+              className="p-3 rounded-lg border dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
+            >
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                {task.text}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onAccept(task)}
+                  className="flex-1 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-900/20 dark:border-green-800 dark:text-green-400 dark:hover:text-green-300"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onDecline(task)}
+                  className="flex-1 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-800 dark:text-red-400 dark:hover:text-red-300"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Decline
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function Todo() {
   const lastAppsCheckTime = useRef(0);
   const lastConversationsCheckTime = useRef(0);
@@ -386,6 +446,8 @@ export function Todo() {
   const [activeTag, setActiveTag] = useState<string>("all");
   const [isAddingTag, setIsAddingTag] = useState<{todoId: string; isOpen: boolean}>({ todoId: '', isOpen: false });
   const { theme, setTheme } = useTheme()
+  
+  const [detectedTasks, setDetectedTasks] = useState<DetectedTask[]>([])
   
   useEffect(() => {
     nameRef.current = name;
@@ -461,6 +523,8 @@ export function Todo() {
     // Search for only the most similar task
     const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
 
+    console.log("Similar tasks:", similarTasks)
+
     if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.30) {
       const task = similarTasks[0];
       const metadata = JSON.parse(task.metadata);
@@ -508,22 +572,42 @@ export function Todo() {
     return false;
   }
 
-  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType, userPrompt?: string) => {
-    const sourceId = uuidv4();
-    await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt ?? "", {sourceId: sourceId});
-
-    // Add new task
+  const insertTaskWithSource = async (
+    task: string, 
+    status: StatusType, 
+    additionMethod: AdditionMethodType, 
+    userPrompt?: string
+  ) => {
+    const sourceId = uuidv4()
+    await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt ?? "", { sourceId })
+    
     await Highlight.vectorDB.insertItem(tasksTableName, task, {
-      status: status || 'pending',
-      additionMethod: additionMethod,
+      status,
+      additionMethod,
       lastModified: new Date().toISOString(),
-      sourceId: sourceId
-    });
-
-    if (additionMethod === 'automatically' && status !== 'false_positive') {
-      await Highlight.app.showNotification('New task added to TODO list', task);
+      sourceId
+    })
+    
+    if (status === 'pending') {
+      loadTasks()
     }
-    loadTasks();
+    
+    console.log(`Task ${status === 'pending' ? 'added' : 'marked as ' + status}:`, task)
+  }
+
+  const addTask = async (task: string, additionMethod: AdditionMethodType, status?: StatusType, userPrompt?: string) => {
+    if (additionMethod === 'automatically') {
+      const newTask: DetectedTask = {
+        id: uuidv4(),
+        text: task,
+        userPrompt: userPrompt || '',
+        timestamp: Date.now()
+      }
+      setDetectedTasks(prev => [...prev, newTask])
+      await Highlight.app.showNotification('New task detected:', task);
+    } else {
+      await insertTaskWithSource(task, status || 'pending', additionMethod, userPrompt)
+    }
   }
 
   // Helper function to calculate cosine similarity
@@ -597,7 +681,8 @@ export function Todo() {
           // Check for duplicate screen content
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
-            let user_prompt = `Name of the User: ${nameRef.current}\nConversation: ${screenContent}`
+            let user_prompt = `Name of the User: ${nameRef.current}.\nConversation: ${screenContent}`
+            console.log("User prompt:", user_prompt)
             const slmTask = await Highlight.inference.getTextPredictionSlm(
               [{role: 'system', content: tasks_system_prompt},
               {role: 'user', content: user_prompt}],
@@ -666,6 +751,18 @@ export function Todo() {
             .map((conv, index) => `Transcript ${index + 1}:\n${conv.transcript}`)
             .join("\n\n---\n\n")
 
+          console.log("Recent transcripts:", recentTranscripts)
+
+          // Check if conversation is one-sided
+          const selfCount = (recentTranscripts.match(/self:/gi) || []).length
+          const otherCount = (recentTranscripts.match(/other:/gi) || []).length
+
+          // If only self messages or no messages at all, skip processing
+          if (selfCount > 0 && otherCount === 0) {
+            console.log("Skipping one-sided conversation")
+            return
+          }
+
           const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
           if (!isDuplicateInput) {
             const conversations_prompt = [
@@ -673,19 +770,33 @@ export function Todo() {
               `Recent Conversations: ${recentTranscripts}`
             ].join("\n")
 
-            console.log("Running LLM for conversations...")
-            const generator = Highlight.inference.getTextPrediction(
+            console.log("Running LLM for conversations for user: ", nameRef.current)
+            const user_generator = Highlight.inference.getTextPrediction(
               [{role: 'system', content: conversations_system_prompt},
               {role: 'user', content: conversations_prompt}]
             )
 
-            let llmTask = ''
-            for await (const part of generator) {
-              llmTask += part
+            let user_llmTask = ''
+            for await (const part of user_generator) {
+              user_llmTask += part
             }
 
-            if (llmTask.includes("Task assigned : ")) {
-              const taskText = llmTask.replace(/Task assigned\s*:\s*/, "")
+            console.log("User LLM task:", user_llmTask)
+
+            const overall_generator = Highlight.inference.getTextPrediction(
+              [{role: 'system', content: overall_conversations_system_prompt},
+              {role: 'user', content: conversations_prompt}]
+            )
+
+            let overall_llmTask = ''
+            for await (const part of overall_generator) {
+              overall_llmTask += part
+            }
+
+            console.log("Overall LLM task:", overall_llmTask)
+
+            if (user_llmTask.includes("Task assigned : ")) {
+              const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
               console.log("LLM found potential task from conversations:", taskText)
               
               const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
@@ -694,6 +805,34 @@ export function Todo() {
                 console.log("Added new task from conversations:", taskText)
               } else {
                 console.log("Duplicate task detected from conversations, skipping addition")
+              }
+            }
+            if (overall_llmTask.startsWith('[') && overall_llmTask.endsWith(']')) {
+              try {
+
+                const tasks = overall_llmTask
+                  .slice(1, -1)
+                  .split('",')
+                  .map(task => task.replace(/^"|"$/g, '').trim())
+
+                console.log("Tasks:", tasks)
+
+                for (const task of tasks) {
+                  if (task.includes("Task assigned : ")) {
+                    const taskText = task.replace(/Task assigned\s*:\s*/, "").trim()
+                    console.log("LLM found potential task from conversations:", taskText)
+
+                    const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
+                    if (!isDuplicateLlmTask) {
+                      await addTask(taskText, 'automatically', 'pending', 'conversations')
+                      console.log("Added new task from conversations:", taskText)
+                    } else {
+                      console.log("Duplicate task detected from conversations, skipping addition")
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error("Failed to parse tasks array:", error)
               }
             } else {
               console.log("No task found in conversations")
@@ -706,12 +845,11 @@ export function Todo() {
       }
     };
 
-    //let removeListener = Highlight.app.addListener("onContext", onContext);
-    let removeListener = Highlight.app.addListener("onPeriodicForegroundAppCheck", onPeriodicForegroundAppCheck);
+    let removeListener = Highlight.app.addListener("onPeriodicForegroundAppCheck", onPeriodicForegroundAppCheck)
 
     return () => {
-      removeListener();
-    };
+      removeListener()
+    }
   });
 
   useEffect(() => {
@@ -851,143 +989,119 @@ export function Todo() {
     })
     .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
 
+  const handleAcceptTask = async (task: DetectedTask) => {
+    await insertTaskWithSource(task.text, 'pending', 'automatically', task.userPrompt)
+    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
+  }
+
+  const handleDeclineTask = async (task: DetectedTask) => {
+    await insertTaskWithSource(task.text, 'false_positive', 'automatically', task.userPrompt)
+    setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8">
-      <Card className="max-w-4xl mx-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
-        {/* Header Section */}
-        <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
-          <div className="flex items-center justify-between mb-2"> {/* Reduced margin */}
-            <div className="flex flex-col"> {/* Changed to flex-col for better alignment */}
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-                Tasks
-              </h1>
-              {isEditingName ? (
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => handleNameUpdate(e.target.value)}
-                  onBlur={() => setIsEditingName(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') setIsEditingName(false);
-                  }}
-                  className="mt-1 px-0 text-sm text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-300 dark:border-gray-700 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
-                  autoFocus
-                />
-              ) : (
-                <button
-                  onClick={() => setIsEditingName(true)}
-                  className="mt-1 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                >
-                  {name}&apos;s workspace
-                </button>
-              )}
+      <div className="max-w-6xl mx-auto flex gap-6">
+        <Card className="flex-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+          {/* Header Section */}
+          <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
+            <div className="flex items-center justify-between mb-2"> {/* Reduced margin */}
+              <div className="flex flex-col"> {/* Changed to flex-col for better alignment */}
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+                  Tasks
+                </h1>
+                {isEditingName ? (
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => handleNameUpdate(e.target.value)}
+                    onBlur={() => setIsEditingName(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') setIsEditingName(false);
+                    }}
+                    className="mt-1 px-0 text-sm text-gray-600 dark:text-gray-400 bg-transparent border-b border-gray-300 dark:border-gray-700 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                    autoFocus
+                  />
+                ) : (
+                  <button
+                    onClick={() => setIsEditingName(true)}
+                    className="mt-1 text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    {name}&apos;s workspace
+                  </button>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                <span className="sr-only">Toggle theme</span>
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">Toggle theme</span>
-            </Button>
+
+            {/* Search/Add Task form */}
+            <form onSubmit={handleNewTaskSubmit} className="flex items-center gap-4 mt-3"> {/* Reduced margin */}
+              <div className="flex-1 relative">
+                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                <Input
+                  type="text"
+                  placeholder="Add a new task or search..."
+                  value={inputText}
+                  onChange={handleInputChange}
+                  className="w-full pl-10 dark:bg-gray-800 dark:border-gray-700"
+                />
+              </div>
+              <Button 
+                type="submit" 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Task
+              </Button>
+            </form>
           </div>
 
-          {/* Search/Add Task form */}
-          <form onSubmit={handleNewTaskSubmit} className="flex items-center gap-4 mt-3"> {/* Reduced margin */}
-            <div className="flex-1 relative">
-              <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-              <Input
-                type="text"
-                placeholder="Add a new task or search..."
-                value={inputText}
-                onChange={handleInputChange}
-                className="w-full pl-10 dark:bg-gray-800 dark:border-gray-700"
-              />
-            </div>
-            <Button 
-              type="submit" 
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Task
-            </Button>
-          </form>
-        </div>
-
-        {/* Main Content */}
-        <CardContent className="p-4"> {/* Reduced padding */}
-          {/* Tags filter */}
-          {allTags.size > 0 && (
-            <div className="flex gap-2 mb-2 overflow-x-auto"> {/* Reduced margin */}
-              <Button
-                variant={activeTag === "all" ? "default" : "ghost"}
-                className={`rounded-full px-4 ${
-                  activeTag === "all"
-                    ? "bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-200"
-                }`}
-                onClick={() => setActiveTag("all")}
-              >
-                All Tasks
-              </Button>
-              {Array.from(allTags).map((tag) => (
+          {/* Main Content */}
+          <CardContent className="p-4"> {/* Reduced padding */}
+            {/* Tags filter */}
+            {allTags.size > 0 && (
+              <div className="flex gap-2 mb-2 overflow-x-auto"> {/* Reduced margin */}
                 <Button
-                  key={tag}
-                  variant={activeTag === tag ? "default" : "ghost"}
+                  variant={activeTag === "all" ? "default" : "ghost"}
                   className={`rounded-full px-4 ${
-                    activeTag === tag
+                    activeTag === "all"
                       ? "bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700"
                       : "hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-200"
                   }`}
-                  onClick={() => setActiveTag(tag)}
+                  onClick={() => setActiveTag("all")}
                 >
-                  #{tag}
+                  All Tasks
                 </Button>
-              ))}
-            </div>
-          )}
+                {Array.from(allTags).map((tag) => (
+                  <Button
+                    key={tag}
+                    variant={activeTag === tag ? "default" : "ghost"}
+                    className={`rounded-full px-4 ${
+                      activeTag === tag
+                        ? "bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700"
+                        : "hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-200"
+                    }`}
+                    onClick={() => setActiveTag(tag)}
+                  >
+                    #{tag}
+                  </Button>
+                ))}
+              </div>
+            )}
 
-          {/* Tasks list */}
-          <div className="space-y-2 bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 mt-2"> {/* Adjusted spacing */}
-            {filteredTodos
-              .filter(todo => todo.status === 'pending')
-              .map((todo) => (
-                <TodoItem
-                  key={todo.id}
-                  todo={todo}
-                  onCheckedChange={toggleTodo}
-                  onDelete={deleteTodo}
-                  onUpdate={updateTodo}
-                  onAddTag={addTagToTodo}
-                  onRemoveTag={removeTagFromTodo} // Add this
-                  allTags={allTags}
-                />
-              ))}
-          </div>
-
-          {/* Completed Tasks Section */}
-          <Collapsible
-            open={showCompletedTodos}
-            onOpenChange={setShowCompletedTodos}
-            className="mt-4"
-          >
-            <CollapsibleTrigger 
-              className="flex items-center justify-between w-full p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors duration-200 dark:text-gray-300"
-            >
-              <span className="flex items-center gap-2">
-                <ChevronDown 
-                  className={`w-4 h-4 transition-transform ${
-                    showCompletedTodos ? 'rotate-180' : ''
-                  }`} 
-                />
-                {showCompletedTodos ? 'Hide' : 'Show'} Completed Tasks
-              </span>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-2 mt-2">
+            {/* Tasks list */}
+            <div className="space-y-2 bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 mt-2"> {/* Adjusted spacing */}
               {filteredTodos
-                .filter(todo => todo.status === 'completed')
+                .filter(todo => todo.status === 'pending')
                 .map((todo) => (
                   <TodoItem
                     key={todo.id}
@@ -999,11 +1113,53 @@ export function Todo() {
                     onRemoveTag={removeTagFromTodo} // Add this
                     allTags={allTags}
                   />
-              ))}
-            </CollapsibleContent>
-          </Collapsible>
-        </CardContent>
-      </Card>
+                ))}
+            </div>
+
+            {/* Completed Tasks Section */}
+            <Collapsible
+              open={showCompletedTodos}
+              onOpenChange={setShowCompletedTodos}
+              className="mt-4"
+            >
+              <CollapsibleTrigger 
+                className="flex items-center justify-between w-full p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors duration-200 dark:text-gray-300"
+              >
+                <span className="flex items-center gap-2">
+                  <ChevronDown 
+                    className={`w-4 h-4 transition-transform ${
+                      showCompletedTodos ? 'rotate-180' : ''
+                    }`} 
+                  />
+                  {showCompletedTodos ? 'Hide' : 'Show'} Completed Tasks
+                </span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-2 mt-2">
+                {filteredTodos
+                  .filter(todo => todo.status === 'completed')
+                  .map((todo) => (
+                    <TodoItem
+                      key={todo.id}
+                      todo={todo}
+                      onCheckedChange={toggleTodo}
+                      onDelete={deleteTodo}
+                      onUpdate={updateTodo}
+                      onAddTag={addTagToTodo}
+                      onRemoveTag={removeTagFromTodo} // Add this
+                      allTags={allTags}
+                    />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
+        
+        <DetectedTasksCard 
+          tasks={detectedTasks}
+          onAccept={handleAcceptTask}
+          onDecline={handleDeclineTask}
+        />
+      </div>
     </div>
   );
 }
