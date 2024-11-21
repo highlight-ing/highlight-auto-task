@@ -750,6 +750,12 @@ export function Todo() {
           const userContext = await Highlight.user.getContext(true)
           const screenContent = userContext.environment.ocrScreenContents ?? ""
 
+          const userCount = (screenContent.match(new RegExp(`\\b${nameRef.current.split(' ')[0]}\\b`, 'gi')) || []).length
+          if (userCount < 1) {
+            console.log("User not found in screen content, skipping SLM call")
+            return
+          }
+
           // Check for duplicate screen content
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
