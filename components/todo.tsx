@@ -824,9 +824,14 @@ export function Todo() {
 
         // Then handle conversations flow independently
         // Log available conversations first
+        const sevenMinsAgo = new Date(now - 7 * 60 * 1000)
         const conversations = await Highlight.conversations.getAllConversations()
-        if (conversations.length > 0) {
-          const recentTranscripts = conversations
+
+        const recentConversations = conversations.filter(conv => 
+          new Date(conv.endedAt) > sevenMinsAgo
+        )
+        if (recentConversations.length > 0) {
+          const recentTranscripts = recentConversations
             .slice(0, 2)
             .map((conv, index) => `Transcript ${index + 1}:\n${conv.transcript}`)
             .join("\n\n---\n\n")
