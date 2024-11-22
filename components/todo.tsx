@@ -788,6 +788,10 @@ export function Todo() {
                   let llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "")
                   const llmAssignedBy = llmTaskText.split(" Assigned by ")[1].replace(',', '').trim()
                   llmTaskText = llmTaskText.split(" Assigned by ")[0].replace(',', '').trim()
+                  if (llmAssignedBy.split(' ')[0] == nameRef.current.split(' ')[0]) {
+                    console.log("LLM task assigned to self, skipping addition")
+                    return
+                  }
 
                   console.log("LLM verified task:", llmTaskText)
                   
