@@ -759,7 +759,7 @@ export function Todo() {
           // Check for duplicate screen content
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
-            let user_prompt = `Name of the User: ${nameRef.current}.\nConversation: ${screenContent}`
+            let user_prompt = `Name of the User : ${nameRef.current}.\nConversation : ${screenContent}`
             const slmTask = await Highlight.inference.getTextPredictionSlm(
               [{role: 'system', content: tasks_system_prompt_slm},
               {role: 'user', content: user_prompt}],
@@ -833,7 +833,8 @@ export function Todo() {
 
           // Check if conversation is one-sided
           const selfCount = (recentTranscripts.match(/self:/gi) || []).length
-          const otherCount = (recentTranscripts.match(/other:/gi) || []).length
+          // change other to other(s):
+          const otherCount = (recentTranscripts.match(/other\(s\):/gi) || []).length
 
           // If only self messages or no messages at all, skip processing
           if (selfCount > 0 && otherCount === 0) {
