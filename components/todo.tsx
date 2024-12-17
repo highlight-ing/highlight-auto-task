@@ -557,7 +557,7 @@ export function Todo() {
 
   const isDuplicateTask = async (taskText: string, userPrompt: string): Promise<boolean> => {
     // Search for only the most similar task
-    const similarTasks = await Highlight.vectorDB.search(tasksTableName, taskText, 1);
+    const similarTasks = await Highlight.vectorDB.vectorSearch(tasksTableName, taskText, 1);
 
     if (similarTasks.length > 0 && Math.abs(similarTasks[0].distance) < 0.30) {
       const task = similarTasks[0];
@@ -605,7 +605,7 @@ export function Todo() {
     }
 
     // Then check detected tasks
-    const similarDetectedTasks = await Highlight.vectorDB.search(detectedTasksTableName, taskText, 1);
+    const similarDetectedTasks = await Highlight.vectorDB.vectorSearch(detectedTasksTableName, taskText, 1);
     if (similarDetectedTasks.length > 0 && Math.abs(similarDetectedTasks[0].distance) < 0.30) {
       console.log("Similar task already detected - skipping");
       return true;
@@ -627,7 +627,6 @@ export function Todo() {
     try {
       const sourceId = uuidv4()
       await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt, { sourceId })
-      
       await Highlight.vectorDB.insertItem(detectedTasksTableName, taskText, {
         status: 'pending',
         additionMethod: 'automatically',
@@ -639,7 +638,6 @@ export function Todo() {
       // Get the task ID from the DB
       const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName)
       const task = tasks.find(t => t.text === taskText)
-      console.log("Task found:", task)
       if (!task) throw new Error("Failed to find newly created task")
 
       const newTask: DetectedTask = {
@@ -965,11 +963,11 @@ export function Todo() {
   const toggleTodo = async (id: string) => {
     const todo = todos.find(todo => todo.id === id);
     const newStatus = todo?.status === 'completed' ? 'pending' : 'completed';
-    await Highlight.vectorDB.updateMetadata(tasksTableName, id,
-      { status: newStatus,
-        additionMethod: todo?.additionMethod,
-        lastModified: new Date().toISOString(),
-        sourceId: todo?.sourceId });
+    await Highlight.vectorDB.updateMetadata(tasksTableName, id, {
+      ...todo,
+      status: newStatus,
+      lastModified: new Date().toISOString(),
+    });
     loadTasks();
   }
 
