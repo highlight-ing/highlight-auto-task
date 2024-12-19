@@ -1390,7 +1390,7 @@ Format each as a professional standup bullet point that someone would actually s
                         Daily Summary
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Generate a summary of today's completed tasks
+                        Generate a summary of today&apos;s completed tasks
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
