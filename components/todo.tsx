@@ -1450,7 +1450,7 @@ Format each as a professional standup bullet point that someone would actually s
                               t.status === 'completed' && 
                               new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
                               !taskSummaries.some(s => s.taskId === t.id)
-                            ).length} new tasks completed. Click "Generate Summary" to update.
+                            ).length} new tasks completed. Click &quot;Generate Summary&quot; to update.
                           </span>
                         </div>
                       )}
@@ -1462,7 +1462,7 @@ Format each as a professional standup bullet point that someone would actually s
                         {todos.filter(t => 
                           t.status === 'completed' && 
                           new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0))
-                        ).length} tasks completed today. Click "Generate Summary" to create an update.
+                        ).length} tasks completed today. Click &quot;Generate Summary&quot; to create an update.
                       </span>
                     </div>
                   )}
