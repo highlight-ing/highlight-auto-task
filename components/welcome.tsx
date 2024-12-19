@@ -28,11 +28,14 @@ import { Button } from "@/components/ui/button"
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card"
+import { useTheme } from "next-themes"
+import { Sun, Moon } from 'lucide-react'
 
 export function Welcome() {
   const { handleNameUpdate } = useName();
   const [name, setName] = useState("");
   const [platform, setPlatform] = useState("");
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -52,7 +55,18 @@ export function Welcome() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-8">
       <div className="w-full max-w-xl">
         <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
-          <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-8 text-center">
+          <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-8 text-center relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full absolute right-4 top-4"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+
             <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
               Auto TODO
             </h1>
