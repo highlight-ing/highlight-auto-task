@@ -24,19 +24,33 @@ interface NameProviderProps {
 
 export const NameProvider: React.FC<NameProviderProps> = ({ children }) => {
   const [name, setName] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchName() {
-      const fetchedName = await Highlight.appStorage.get("name");
-      setName(fetchedName);
+    const loadSavedName = async () => {
+      try {
+        const savedName = await Highlight.appStorage.get('userName')
+        if (savedName) {
+          setName(savedName)
+        }
+      } catch (error) {
+        console.error('Failed to load saved name:', error)
+      } finally {
+        setIsLoading(false)
+      }
     }
-    fetchName();
-  }, []);
+    
+    loadSavedName()
+  }, [])
 
   const handleNameUpdate = async (newName: string) => {
-    await Highlight.appStorage.set("name", newName);
-    setName(newName);
-  };
+    setName(newName)
+    try {
+      await Highlight.appStorage.set('userName', newName)
+    } catch (error) {
+      console.error('Failed to save name:', error)
+    }
+  }
 
   return (
     <NameContext.Provider value={{ name, handleNameUpdate }}>

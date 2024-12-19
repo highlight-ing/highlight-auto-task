@@ -496,6 +496,34 @@ export function Todo() {
   const [taskSummaries, setTaskSummaries] = useState<TaskSummary[]>([])
   const [isCopied, setIsCopied] = useState(false)
   
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Load initial data
+        await loadTasks()
+        
+        // Initialize name from storage if exists
+        const savedName = await Highlight.appStorage.get('userName')
+        if (savedName) {
+          handleNameUpdate(savedName)
+          nameRef.current = savedName
+        }
+        
+        // Initialize help section state
+        const helpSectionState = await Highlight.appStorage.get("showHelpSection")
+        setShowHelpSection(helpSectionState ?? true)
+        
+        setIsInitialized(true)
+      } catch (error) {
+        console.error('Failed to initialize app:', error)
+      }
+    }
+
+    initializeApp()
+  }, []) // Empty deps array for initialization
+
   useEffect(() => {
     nameRef.current = name;
   }, [name]);
@@ -747,9 +775,9 @@ export function Todo() {
     `;
 
   useEffect(() => {
-    const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
-      if (!slmCapable) return
+    if (!isInitialized) return
 
+    const onPeriodicForegroundAppCheck = async (context: HighlightContext) => {
       const now = Date.now()
       if (now - lastAppsCheckTime.current >= 15000) {
         lastAppsCheckTime.current = now
@@ -760,12 +788,9 @@ export function Todo() {
         const supportedApps = [
           // Chat/Team Apps
           "Slack",
-          // "Messages",
           "app.slack.com",
           "Microsoft Teams",
           "teams.microsoft.com",
-          // "Discord",
-          // "discord.com",
           "Telegram",
           "telegram.org",
           "WhatsApp",
@@ -954,14 +979,17 @@ export function Todo() {
         }
         console.log("Periodic check for conversations completed")
       }
-    };
+    }
 
-    let removeListener = Highlight.app.addListener("onPeriodicForegroundAppCheck", onPeriodicForegroundAppCheck)
+    let removeListener = Highlight.app.addListener(
+      "onPeriodicForegroundAppCheck", 
+      onPeriodicForegroundAppCheck
+    )
 
     return () => {
       removeListener()
     }
-  });
+  }, [isInitialized])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
@@ -995,16 +1023,14 @@ export function Todo() {
     const todo = todos.find(todo => todo.id === id)
     const newStatus = todo?.status === 'completed' ? 'pending' : 'completed'
     
+    // Clear summaries regardless of the new status
+    await clearSummaries()
+    
     await Highlight.vectorDB.updateMetadata(tasksTableName, id, {
       ...todo,
       status: newStatus,
       lastModified: new Date().toISOString(),
     })
-
-    // Clear summaries when unchecking a task
-    if (newStatus === 'pending') {
-      await clearSummaries()
-    }
     
     loadTasks()
   }
@@ -1118,6 +1144,9 @@ export function Todo() {
   }, [])
 
   const generateTaskSummary = async () => {
+    // Clear existing summaries before generating new ones
+    await clearSummaries()
+    
     // Get today's completed tasks
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
@@ -1185,6 +1214,18 @@ Format each as a professional standup bullet point that someone would actually s
     const newSummaries = taskSummaries.filter(summary => summary.taskId !== taskId)
     setTaskSummaries(newSummaries)
     await Highlight.appStorage.set('taskSummaries', newSummaries)
+  }
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300">
+            Initializing...
+          </h2>
+        </div>
+      </div>
+    )
   }
 
   return (
