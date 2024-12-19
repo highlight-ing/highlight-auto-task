@@ -37,7 +37,8 @@ import {
   Moon,
   Sun,
   X,
-  Link
+  Link,
+  Copy
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
@@ -83,6 +84,12 @@ interface DetectedTasksCardProps {
   tasks: DetectedTask[]
   onAccept: (task: DetectedTask) => void
   onDecline: (task: DetectedTask) => void
+}
+
+interface TaskSummary {
+  taskId: string
+  summary: string
+  timestamp: string
 }
 
 const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate, onAddTag, onRemoveTag, allTags }) => {
@@ -486,6 +493,8 @@ export function Todo() {
   const { theme, setTheme } = useTheme()
   
   const [detectedTasks, setDetectedTasks] = useState<DetectedTask[]>([])
+  const [taskSummaries, setTaskSummaries] = useState<TaskSummary[]>([])
+  const [isCopied, setIsCopied] = useState(false)
   
   useEffect(() => {
     nameRef.current = name;
@@ -983,14 +992,21 @@ export function Todo() {
   }
 
   const toggleTodo = async (id: string) => {
-    const todo = todos.find(todo => todo.id === id);
-    const newStatus = todo?.status === 'completed' ? 'pending' : 'completed';
+    const todo = todos.find(todo => todo.id === id)
+    const newStatus = todo?.status === 'completed' ? 'pending' : 'completed'
+    
     await Highlight.vectorDB.updateMetadata(tasksTableName, id, {
       ...todo,
       status: newStatus,
       lastModified: new Date().toISOString(),
-    });
-    loadTasks();
+    })
+
+    // Clear summaries when unchecking a task
+    if (newStatus === 'pending') {
+      await clearSummaries()
+    }
+    
+    loadTasks()
   }
 
   const toggleTodoWithFadeOut = async (id: string) => {
@@ -1090,6 +1106,86 @@ export function Todo() {
       return matchesTag && matchesSearch;
     })
     .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+
+  useEffect(() => {
+    const loadSavedSummaries = async () => {
+      const saved = await Highlight.appStorage.get('taskSummaries')
+      if (saved) {
+        setTaskSummaries(saved)
+      }
+    }
+    loadSavedSummaries()
+  }, [])
+
+  const generateTaskSummary = async () => {
+    // Get today's completed tasks
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    
+    const completedTasks = todos.filter(todo => 
+      todo.status === 'completed' &&
+      new Date(todo.lastModified) >= todayStart
+    )
+
+    if (completedTasks.length === 0) return
+
+    const prompt = `Date Range: ${new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} to ${new Date().toISOString().split('T')[0]}
+
+Convert these completed tasks from today into natural standup updates:
+
+Tasks:
+${completedTasks.map(task => `- ${task.text}
+  Assigned by: ${task.assignedBy || 'self'}
+  Source: ${task.source || 'manual entry'}
+  Completed: ${new Date(task.lastModified).toLocaleTimeString()}`).join('\n\n')}
+
+Format each as a professional standup bullet point that someone would actually say in a meeting. Each point should clearly indicate the task was completed (use past tense). Focus on the impact and outcome. Include relevant context about who assigned it if it wasn't self-assigned.`
+    
+    let summaries = []
+    for (const task of completedTasks) {
+      let summary = ''
+      const generator = Highlight.inference.getTextPrediction(
+        [{role: 'system', content: 'You are a helpful assistant that converts completed tasks into natural standup updates. Make them sound like something a developer would actually say in a standup when reporting finished work. Use past tense to indicate completion. If the task was assigned by someone else, mention that context. Keep each under 100 characters.'},
+         {role: 'user', content: `Convert this completed task into a natural standup update: "${task.text}" (Assigned by: ${task.assignedBy || 'self'})`}],
+        {temperature: 0.7}
+      )
+
+      for await (const part of generator) {
+        summary += part
+      }
+
+      summaries.push({
+        taskId: task.id,
+        summary: summary.replace(/^[-•*]\s*/, '').trim(),
+        timestamp: new Date().toISOString()
+      })
+    }
+    
+    setTaskSummaries(summaries)
+    await Highlight.appStorage.set('taskSummaries', summaries)
+  }
+
+  const handleCopySummary = () => {
+    const summaryText = taskSummaries
+      .map(s => `• ${s.summary}`)
+      .join('\n')
+    
+    navigator.clipboard.writeText(summaryText)
+    setIsCopied(true)
+    setTimeout(() => setIsCopied(false), 2000)
+  }
+
+  const clearSummaries = async () => {
+    setTaskSummaries([])
+    await Highlight.appStorage.set('taskSummaries', [])
+  }
+
+  // Add this helper function inside Todo component
+  const removeSummaryForTask = async (taskId: string) => {
+    const newSummaries = taskSummaries.filter(summary => summary.taskId !== taskId)
+    setTaskSummaries(newSummaries)
+    await Highlight.appStorage.set('taskSummaries', newSummaries)
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8">
@@ -1243,6 +1339,95 @@ export function Todo() {
                 ))}
               </CollapsibleContent>
             </Collapsible>
+
+            {todos.some(todo => todo.status === 'completed') && (
+              <Card className="mt-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-md border-0 dark:ring-1 dark:ring-white/10">
+                <div className="p-4 border-b dark:border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        Daily Summary
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Generate a summary of today's completed tasks
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={generateTaskSummary}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+                      >
+                        Generate Summary
+                      </Button>
+                      {taskSummaries.length > 0 && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                            onClick={handleCopySummary}
+                          >
+                            <Copy className="w-4 h-4 mr-2" />
+                            {isCopied ? 'Copied!' : 'Copy'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                            onClick={clearSummaries}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Clear
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <CardContent className="p-4">
+                  {taskSummaries.length > 0 ? (
+                    <div className="space-y-3 bg-gray-50/50 dark:bg-gray-800/50 rounded-lg p-4">
+                      {taskSummaries.map((summary) => (
+                        <div 
+                          key={summary.taskId}
+                          className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-300"
+                        >
+                          <span className="flex-shrink-0 mt-1 text-gray-400">•</span>
+                          <span className="flex-1">{summary.summary}</span>
+                        </div>
+                      ))}
+                      {/* Show new tasks notification if more tasks completed after summary generation */}
+                      {todos.filter(t => 
+                        t.status === 'completed' && 
+                        new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
+                        !taskSummaries.some(s => s.taskId === t.id)
+                      ).length > 0 && (
+                        <div className="mt-4 text-sm text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg p-3 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          <span>
+                            {todos.filter(t => 
+                              t.status === 'completed' && 
+                              new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
+                              !taskSummaries.some(s => s.taskId === t.id)
+                            ).length} new tasks completed. Click "Generate Summary" to update.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg p-4 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>
+                        {todos.filter(t => 
+                          t.status === 'completed' && 
+                          new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0))
+                        ).length} tasks completed today. Click "Generate Summary" to create an update.
+                      </span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </CardContent>
         </Card>
         
