@@ -36,7 +36,8 @@ import {
   UserIcon,
   Moon,
   Sun,
-  X
+  X,
+  Link
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
@@ -59,6 +60,7 @@ export interface Task {
   sourceId: string;
   tags: string[];  // Changed from single category to multiple tags
   assignedBy?: string;
+  source?: string;
 }
 
 interface TodoItemProps {
@@ -295,12 +297,20 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
             </div>
           )}
 
-          {todo.assignedBy && (
-            <div className="flex items-center gap-1 mt-1">
-              <UserIcon className="w-3 h-3 text-gray-400" />
-              <span className="text-xs text-gray-500">
-                Assigned by {todo.assignedBy}
-              </span>
+          {(todo.assignedBy || todo.source) && (
+            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+              {todo.assignedBy && (
+                <div className="flex items-center gap-1">
+                  <UserIcon className="w-3 h-3" />
+                  <span>Assigned by {todo.assignedBy}</span>
+                </div>
+              )}
+              {todo.source && (
+                <div className="flex items-center gap-1">
+                  <Link className="w-3 h-3" />
+                  <span>From {todo.source}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -401,9 +411,25 @@ function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProp
               key={task.id}
               className="p-3 rounded-lg border dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
             >
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
                 {task.text}
               </p>
+              {(task.metadata.assignedBy || task.metadata.source) && (
+                <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
+                  {task.metadata.assignedBy && (
+                    <div className="flex items-center gap-1">
+                      <UserIcon className="w-3 h-3" />
+                      <span>By {task.metadata.assignedBy}</span>
+                    </div>
+                  )}
+                  {task.metadata.source && (
+                    <div className="flex items-center gap-1">
+                      <Link className="w-3 h-3" />
+                      <span>From {task.metadata.source}</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -513,8 +539,9 @@ export function Todo() {
         fadingOut: false,
         priority: task.metadata.priority,
         sourceId: task.metadata.sourceId,
-        tags: task.metadata.tags || [], // Ensure tags is always an array
-        assignedBy: task.metadata.assignedBy || 'unknown'
+        tags: task.metadata.tags || [],
+        assignedBy: task.metadata.assignedBy || 'unknown',
+        source: task.metadata.source
       }));
       
       // Collect all unique tags from tasks
@@ -622,7 +649,7 @@ export function Todo() {
     }
   }
 
-  const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string) => {
+  const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string, appSource?: string) => {
     try {
       const sanitizedText = taskText.replace(/["]/g, '')
       const sourceId = uuidv4()
@@ -632,7 +659,8 @@ export function Todo() {
         additionMethod: 'automatically',
         lastModified: new Date().toISOString(),
         sourceId,
-        assignedBy
+        assignedBy,
+        source: appSource
       })
 
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -797,7 +825,7 @@ export function Todo() {
                   
                   const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt)
                   if (!isDuplicateLlmTask) {
-                    await storeDetectedTask(llmTaskText, llmAssignedBy, user_prompt)
+                    await storeDetectedTask(llmTaskText, llmAssignedBy, user_prompt, context.appName || new URL(context.url || '').hostname)
                   } else {
                     console.log("Duplicate LLM task detected from apps, skipping addition")
                   }
@@ -889,7 +917,7 @@ export function Todo() {
 
                     const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
                     if (!isDuplicateLlmTask) {
-                      await storeDetectedTask(taskText, "unknown", 'conversations')
+                      await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
                     } else {
                       console.log("Duplicate task detected from conversations, skipping addition")
                     }
@@ -904,7 +932,7 @@ export function Todo() {
               
               const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
               if (!isDuplicateLlmTask) {
-                await storeDetectedTask(taskText, "unknown", 'conversations')
+                await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
               } else {
                 console.log("Duplicate task detected from conversations, skipping addition")
               }
@@ -937,7 +965,7 @@ export function Todo() {
     if (inputText.trim()) {
       await addTask({
         id: uuidv4(),
-        metadata: { status: 'pending', additionMethod: 'manually' },
+        metadata: { status: 'pending', additionMethod: 'manually', source: 'Manual Entry', assignedBy: nameRef.current },
         text: inputText
       });
       setInputText(""); // Clear input after adding task
