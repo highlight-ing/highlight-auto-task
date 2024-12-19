@@ -27,11 +27,15 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card"
+import { useTheme } from "next-themes"
+import { Sun, Moon } from 'lucide-react'
 
 export function Welcome() {
   const { handleNameUpdate } = useName();
   const [name, setName] = useState("");
   const [platform, setPlatform] = useState("");
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,68 +52,72 @@ export function Welcome() {
 
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-white">
-      <div className="max-w-3xl px-4 py-12 text-center">
-        <h1 className="text-5xl font-bold text-black">Auto TODO</h1>
-        <p className="mt-4 text-lg text-black">
-          Effortlessly manage your tasks with our intelligent to-do app. Auto TODO automatically detects tasks,
-          from your screen.
-        </p>
-        {platform !== 'Mac' ? (
-          <p className="mt-8 text-xl font-semibold text-red-500">
-            Your OS Not Supported. Currently, this feature works on MacOS only.
-          </p>
-        ) : (
-          <div className="mt-8">
-            <label htmlFor="name" className="block mb-2 text-xl font-semibold text-black">
-              What is your name?
-            </label>
-            <p className="mb-4 text-base text-black">We need to know your name, for detecting the tasks meant for you.</p>
-            <div className="flex items-center justify-center">
-              <Input
-                id="name"
-                type="text"
-                placeholder="Enter your name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full max-w-md px-4 py-2 text-black bg-white rounded-md shadow-md focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div className="flex justify-center mt-4">
-              <Button
-                disabled={!name} // Button is enabled only when 'name' state has a value
-                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                onClick={() => handleNameUpdate(name)}
-              >
-                Next
-              </Button>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-8">
+      <div className="w-full max-w-xl">
+        <Card className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+          <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-8 text-center relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full absolute right-4 top-4"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+              Auto TODO
+            </h1>
+            <p className="mt-6 text-lg text-gray-600 dark:text-gray-300 max-w-md mx-auto">
+              Effortlessly manage your tasks with our intelligent to-do app that automatically detects tasks from your screen.
+            </p>
           </div>
-          /* <div className="mt-12">
-            <h2 className="text-2xl font-bold text-black">Currently Supported for</h2>
-            <div className="grid grid-cols-1 gap-4 mt-4">
-              <div className="flex flex-col items-center justify-center">
-                <SlackIcon className="w-8 h-8 text-black" />
-                <span className="mt-2 text-sm font-medium text-black">Slack</span>
+
+          <CardContent className="p-8">
+            {platform !== 'Mac' ? (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg p-6 text-center">
+                <p className="text-2xl font-semibold text-red-600 dark:text-red-400">
+                  Your OS Not Supported
+                </p>
+                <p className="mt-3 text-red-500 dark:text-red-300">
+                  Currently, this feature works on MacOS only.
+                </p>
               </div>
-            </div>
-            <h2 className="text-2xl font-bold text-black mt-8">Supporting soon for</h2>
-            <div className="grid grid-cols-2 gap-4 mt-4 sm:grid-cols-3">
-              <div className="flex flex-col items-center justify-center">
-                <MailIcon className="w-8 h-8 text-black" />
-                <span className="mt-2 text-sm font-medium text-black">Gmail</span>
+            ) : (
+              <div className="space-y-8 max-w-md mx-auto">
+                <div className="text-center">
+                  <label htmlFor="name" className="block text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                    What is your name?
+                  </label>
+                  <p className="mt-3 text-gray-600 dark:text-gray-400">
+                    We need to know your name for detecting the tasks meant for you.
+                  </p>
+                </div>
+                
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Enter your name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full text-lg py-6 px-4 dark:bg-gray-800/50 dark:border-gray-700 text-center"
+                />
+
+                <div className="flex justify-center">
+                  <Button
+                    disabled={!name}
+                    className="w-full max-w-[200px] bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white py-6 text-lg font-medium rounded-xl"
+                    onClick={() => handleNameUpdate(name)}
+                  >
+                    Get Started
+                  </Button>
+                </div>
               </div>
-              <div className="flex flex-col items-center justify-center">
-                <MessageCircleIcon className="w-8 h-8 text-black" />
-                <span className="mt-2 text-sm font-medium text-black">WhatsApp</span>
-              </div>
-              <div className="flex flex-col items-center justify-center">
-                <InboxIcon className="w-8 h-8 text-black" />
-                <span className="mt-2 text-sm font-medium text-black">Outlook</span>
-              </div>
-            </div>
-          </div> */
-        )}
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
