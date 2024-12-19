@@ -241,7 +241,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   return (
     <div 
       ref={todoItemRef}
-      className="group relative rounded-xl border dark:border-gray-700 p-3 transition-all duration-200 hover:shadow-md dark:bg-gray-800/50 dark:hover:bg-gray-800/80"
+      className="group relative bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5 transition-all duration-200 hover:shadow-md dark:hover:bg-gray-800/80"
     >
       <div className="flex items-start gap-3">
         <button 
@@ -400,60 +400,43 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 };
 
 function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProps) {
-  const sortedTasks = [...tasks].sort((a, b) => new Date(b.metadata.lastModified).getTime() - new Date(a.metadata.lastModified).getTime())
-
-  if (sortedTasks.length === 0) return null
+  if (tasks.length === 0) return null
 
   return (
-    <Card className="w-80 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
-      <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+    <Card className="w-80 h-fit bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+      <div className="p-4 border-b dark:border-gray-800">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Detected Tasks
         </h2>
       </div>
       <CardContent className="p-4">
-        <div className="space-y-3">
-          {sortedTasks.map((task) => (
-            <div 
+        <div className="space-y-4 mt-2">
+          {tasks.map((task) => (
+            <div
               key={task.id}
-              className="p-3 rounded-lg border dark:border-gray-700 bg-white/50 dark:bg-gray-800/50"
+              className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700/50"
             >
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-                {task.text}
-              </p>
-              {(task.metadata.assignedBy || task.metadata.source) && (
-                <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
-                  {task.metadata.assignedBy && (
-                    <div className="flex items-center gap-1">
-                      <UserIcon className="w-3 h-3" />
-                      <span>By {task.metadata.assignedBy}</span>
-                    </div>
-                  )}
-                  {task.metadata.source && (
-                    <div className="flex items-center gap-1">
-                      <Link className="w-3 h-3" />
-                      <span>From {task.metadata.source}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+              <p className="text-gray-900 dark:text-gray-100 mb-4">{task.text}</p>
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+                <UserIcon className="w-4 h-4" />
+                <span>By {task.metadata.assignedBy}</span>
+                <Link className="w-4 h-4" />
+                <span>From {task.metadata.source}</span>
+              </div>
               <div className="flex gap-2">
                 <Button
-                  size="sm"
-                  variant="outline"
                   onClick={() => onAccept(task)}
-                  className="flex-1 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-900/20 dark:border-green-800 dark:text-green-400 dark:hover:text-green-300"
+                  className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:opacity-90 text-white dark:from-green-500 dark:to-emerald-500"
                 >
-                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
                   Accept
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
                   onClick={() => onDecline(task)}
-                  className="flex-1 text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-900/20 dark:border-red-800 dark:text-red-400 dark:hover:text-red-300"
+                  variant="outline"
+                  className="flex-1 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/50"
                 >
-                  <X className="w-4 h-4 mr-1" />
+                  <X className="w-4 h-4 mr-2" />
                   Decline
                 </Button>
               </div>
@@ -1328,21 +1311,32 @@ Format each as a professional standup bullet point that someone would actually s
             )}
 
             {/* Tasks list */}
-            <div className="space-y-2 bg-white/50 dark:bg-gray-800/50 rounded-lg p-3 mt-2"> {/* Adjusted spacing */}
-              {filteredTodos
-                .filter(todo => todo.status === 'pending')
-                .map((todo) => (
-                  <TodoItem
-                    key={todo.id}
-                    todo={todo}
-                    onCheckedChange={toggleTodo}
-                    onDelete={deleteTodo}
-                    onUpdate={updateTodo}
-                    onAddTag={addTagToTodo}
-                    onRemoveTag={removeTagFromTodo} // Add this
-                    allTags={allTags}
-                  />
-                ))}
+            <div className="space-y-3 rounded-lg mt-4">
+              {filteredTodos.filter(todo => todo.status === 'pending').length === 0 ? (
+                <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-8 min-h-[120px] flex items-center justify-center">
+                  <div className="text-gray-500 dark:text-gray-400 text-center">
+                    <p className="font-medium">No tasks yet</p>
+                    <p className="text-sm mt-1">Add a new task using the input above</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredTodos
+                    .filter(todo => todo.status === 'pending')
+                    .map((todo) => (
+                      <TodoItem
+                        key={todo.id}
+                        todo={todo}
+                        onCheckedChange={toggleTodo}
+                        onDelete={deleteTodo}
+                        onUpdate={updateTodo}
+                        onAddTag={addTagToTodo}
+                        onRemoveTag={removeTagFromTodo}
+                        allTags={allTags}
+                      />
+                    ))}
+                </div>
+              )}
             </div>
 
             {/* Completed Tasks Section */}
@@ -1382,13 +1376,13 @@ Format each as a professional standup bullet point that someone would actually s
             </Collapsible>
 
             {todos.some(todo => todo.status === 'completed') && (
-              <Card className="mt-6 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-md border-0 dark:ring-1 dark:ring-white/10">
+              <Card className="mt-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg shadow-md border-0 dark:ring-1 dark:ring-white/10">
                 <div className="p-4 border-b dark:border-gray-800">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                         Daily Summary
-                      </h3>
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         Generate a summary of today&apos;s completed tasks
                       </p>
@@ -1427,23 +1421,23 @@ Format each as a professional standup bullet point that someone would actually s
                 </div>
                 <CardContent className="p-4">
                   {taskSummaries.length > 0 ? (
-                    <div className="space-y-3 bg-gray-50/50 dark:bg-gray-800/50 rounded-lg p-4">
+                    <div className="space-y-3 mt-2">
                       {taskSummaries.map((summary) => (
                         <div 
                           key={summary.taskId}
-                          className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-300"
+                          className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-200 bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700/50"
                         >
-                          <span className="flex-shrink-0 mt-1 text-gray-400">•</span>
-                          <span className="flex-1">{summary.summary}</span>
+                          <span className="flex-shrink-0 mt-1.5 w-2 h-2 rounded-full bg-blue-500"></span>
+                          <span className="flex-1 leading-relaxed">{summary.summary}</span>
                         </div>
                       ))}
-                      {/* Show new tasks notification if more tasks completed after summary generation */}
+                      {/* Update notification styling */}
                       {todos.filter(t => 
                         t.status === 'completed' && 
                         new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
                         !taskSummaries.some(s => s.taskId === t.id)
                       ).length > 0 && (
-                        <div className="mt-4 text-sm text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg p-3 flex items-center gap-2">
+                        <div className="mt-4 text-sm text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 rounded-lg p-3.5 flex items-center gap-2">
                           <AlertCircle className="w-4 h-4" />
                           <span>
                             {todos.filter(t => 
@@ -1456,8 +1450,8 @@ Format each as a professional standup bullet point that someone would actually s
                       )}
                     </div>
                   ) : (
-                    <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg p-4 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
+                    <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 rounded-lg p-4 my-2 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
                       <span>
                         {todos.filter(t => 
                           t.status === 'completed' && 

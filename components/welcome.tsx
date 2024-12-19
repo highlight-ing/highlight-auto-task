@@ -67,48 +67,50 @@ export function Welcome() {
               <span className="sr-only">Toggle theme</span>
             </Button>
 
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-6">
               Auto TODO
             </h1>
-            <p className="mt-6 text-lg text-gray-600 dark:text-gray-300 max-w-md mx-auto">
+            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-md mx-auto">
               Effortlessly manage your tasks with our intelligent to-do app that automatically detects tasks from your screen.
             </p>
           </div>
 
-          <CardContent className="p-8">
+          <CardContent className="p-12 pt-16">
             {platform !== 'Mac' ? (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg p-6 text-center">
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg p-8 text-center">
                 <p className="text-2xl font-semibold text-red-600 dark:text-red-400">
                   Your OS Not Supported
                 </p>
-                <p className="mt-3 text-red-500 dark:text-red-300">
+                <p className="mt-4 text-red-500 dark:text-red-300">
                   Currently, this feature works on MacOS only.
                 </p>
               </div>
             ) : (
-              <div className="space-y-8 max-w-md mx-auto">
-                <div className="text-center">
-                  <label htmlFor="name" className="block text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                    What is your name?
-                  </label>
-                  <p className="mt-3 text-gray-600 dark:text-gray-400">
-                    We need to know your name for detecting the tasks meant for you.
-                  </p>
+              <div className="space-y-16 max-w-md mx-auto">
+                <div className="text-center space-y-6">
+                  <div className="space-y-4">
+                    <h2 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+                      What is your name?
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400 text-lg">
+                      We need to know your name for detecting the tasks meant for you.
+                    </p>
+                  </div>
+                  
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Enter your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full text-lg py-6 px-4 bg-white/50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl text-center placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
                 </div>
-                
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full text-lg py-6 px-4 dark:bg-gray-800/50 dark:border-gray-700 text-center"
-                />
 
                 <div className="flex justify-center">
                   <Button
                     disabled={!name}
-                    className="w-full max-w-[200px] bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white py-6 text-lg font-medium rounded-xl"
+                    className="w-full max-w-[200px] bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white py-6 text-lg font-medium rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                     onClick={() => handleNameUpdate(name)}
                   >
                     Get Started
