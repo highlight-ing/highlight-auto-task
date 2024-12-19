@@ -777,7 +777,7 @@ export function Todo() {
   useEffect(() => {
     if (!isInitialized) return
 
-    const onPeriodicForegroundAppCheck = async (context: HighlightContext) => {
+    const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
       const now = Date.now()
       if (now - lastAppsCheckTime.current >= 15000) {
         lastAppsCheckTime.current = now
