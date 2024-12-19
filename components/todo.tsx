@@ -615,7 +615,6 @@ export function Todo() {
   };
 
   const addTask = async (task: DetectedTask) => {
-      await Highlight.app.showNotification('New task detected:', task.text);
       await Highlight.vectorDB.insertItem(tasksTableName, task.text, task.metadata);
       
     if (task.metadata.status === 'pending') {
@@ -625,9 +624,10 @@ export function Todo() {
 
   const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string) => {
     try {
+      const sanitizedText = taskText.replace(/["]/g, '')
       const sourceId = uuidv4()
       await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt, { sourceId })
-      await Highlight.vectorDB.insertItem(detectedTasksTableName, taskText, {
+      await Highlight.vectorDB.insertItem(detectedTasksTableName, sanitizedText, {
         status: 'pending',
         additionMethod: 'automatically',
         lastModified: new Date().toISOString(),
@@ -635,10 +635,12 @@ export function Todo() {
         assignedBy
       })
 
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Get the task ID from the DB
       const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName)
-      const task = tasks.find(t => t.text === taskText)
-      if (!task) throw new Error("Failed to find newly created task")
+      const task = tasks.find(t => t.text === sanitizedText)
+      if (!task) throw new Error(`Failed to find newly created task : ${sanitizedText}`)
 
       const newTask: DetectedTask = {
         id: task.id,
@@ -647,6 +649,8 @@ export function Todo() {
       }
 
       setDetectedTasks(prev => [...prev, newTask])
+      console.log("Task shown on UI :", newTask)
+      await Highlight.app.showNotification('New task detected:', task.text);
     } catch (error) {
       console.error("Failed to store detected task:", error)
       return null
@@ -771,7 +775,7 @@ export function Todo() {
               const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt)
               if (!isDuplicateSlmTask) {
                 console.log("Running LLM verification...")
-                user_prompt = `Todays Date: ${new Date().toISOString().split('T')[0]}.\n${user_prompt}`
+                user_prompt = `Date Range: ${new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} to ${new Date().toISOString().split('T')[0]}.\n${user_prompt}`
                 const generator = Highlight.inference.getTextPrediction(
                   [{role: 'system', content: tasks_system_prompt_llm},
                   {role: 'user', content: user_prompt}]
@@ -790,8 +794,6 @@ export function Todo() {
                     console.log("LLM task assigned to self, skipping addition")
                     return
                   }
-
-                  console.log("LLM verified task:", llmTaskText)
                   
                   const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt)
                   if (!isDuplicateLlmTask) {
@@ -820,13 +822,11 @@ export function Todo() {
 
         console.log("Starting periodic conversations check...")
 
-        // Then handle conversations flow independently
-        // Log available conversations first
-        const sevenMinsAgo = new Date(now - 7 * 60 * 1000)
+        const timeframe = new Date(now - 30 * 60 * 1000)
         const conversations = await Highlight.conversations.getAllConversations()
 
         const recentConversations = conversations.filter(conv => 
-          new Date(conv.endedAt) > sevenMinsAgo
+          new Date(conv.endedAt) > timeframe
         )
         if (recentConversations.length > 0) {
           const recentTranscripts = recentConversations
@@ -845,6 +845,12 @@ export function Todo() {
             return
           }
 
+          // globally replace 'self:' with 'nameRef.current:'
+          // let modifiedTranscripts = recentTranscripts.replace(/self:\s*/gi, `${nameRef.current.split(' ')[0]}: `)
+          // let modifiedTranscripts = recentTranscripts.replace(/other\(s\):/gi, `${nameRef.current.split(' ')[0]}: `)
+
+          // console.log("Recent recentTranscripts:", modifiedTranscripts)
+
           const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
           if (!isDuplicateInput) {
             const conversations_prompt = [
@@ -855,7 +861,8 @@ export function Todo() {
             console.log("Running LLM for conversations for user: ", nameRef.current)
             const user_generator = Highlight.inference.getTextPrediction(
               [{role: 'system', content: conversations_system_prompt},
-              {role: 'user', content: conversations_prompt}]
+              {role: 'user', content: conversations_prompt}],
+              {temperature: 0.5}
             )
 
             let user_llmTask = ''
@@ -863,35 +870,12 @@ export function Todo() {
               user_llmTask += part
             }
 
-            console.log("User LLM task:", user_llmTask)
+            console.log("User Conversations LLM task:", user_llmTask)
 
-            const overall_generator = Highlight.inference.getTextPrediction(
-              [{role: 'system', content: overall_conversations_system_prompt},
-              {role: 'user', content: conversations_prompt}]
-            )
-
-            let overall_llmTask = ''
-            for await (const part of overall_generator) {
-              overall_llmTask += part
-            }
-
-            console.log("Overall LLM task:", overall_llmTask)
-
-            if (user_llmTask.includes("Task assigned : ")) {
-              const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
-              console.log("LLM found potential task from conversations:", taskText)
-              
-              const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
-              if (!isDuplicateLlmTask) {
-                await storeDetectedTask(taskText, "unknown", 'conversations')
-              } else {
-                console.log("Duplicate task detected from conversations, skipping addition")
-              }
-            }
-            if (overall_llmTask.startsWith('[') && overall_llmTask.endsWith(']')) {
+            if (user_llmTask.startsWith('[') && user_llmTask.endsWith(']')) {
               try {
 
-                const tasks = overall_llmTask
+                const tasks = user_llmTask
                   .slice(1, -1)
                   .split('",')
                   .map(task => task.replace(/^"|"$/g, '').trim())
@@ -913,6 +897,16 @@ export function Todo() {
                 }
               } catch (error) {
                 console.error("Failed to parse tasks array:", error)
+              }
+            } else if (user_llmTask.includes("Task assigned : ")) {
+              const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
+              console.log("LLM found potential task from conversations:", taskText)
+              
+              const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
+              if (!isDuplicateLlmTask) {
+                await storeDetectedTask(taskText, "unknown", 'conversations')
+              } else {
+                console.log("Duplicate task detected from conversations, skipping addition")
               }
             } else {
               console.log("No task found in conversations")
