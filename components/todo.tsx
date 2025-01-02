@@ -38,7 +38,9 @@ import {
   Sun,
   X,
   Link,
-  Copy
+  Copy,
+  Calendar,
+  Bell
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
@@ -46,6 +48,13 @@ import { useName } from './providers/NameProvider'; // Adjust the path based on 
 import { v4 as uuidv4 } from 'uuid';
 import { tasks_system_prompt_slm, tasks_system_prompt_llm, conversations_system_prompt, overall_conversations_system_prompt } from './prompts';
 import { useTheme } from "next-themes"
+import { DayPicker } from 'react-day-picker'
+import { format } from 'date-fns'
+import { cn } from "@/lib/utils"
+import { createPortal } from 'react-dom'
+import { ReminderModal } from "@/components/ui/reminder-modal"
+import { RemindersView } from "@/components/reminders-view"
+import { useReminders } from "./providers/RemindersProvider"
 
 type StatusType = 'pending' | 'completed' | 'deleted' | 'false_positive';
 type AdditionMethodType = 'manually' | 'automatically' | 'semi_automatically';
@@ -62,6 +71,8 @@ export interface Task {
   tags: string[];  // Changed from single category to multiple tags
   assignedBy?: string;
   source?: string;
+  dueDate?: string; // Add this field
+  reminders?: Reminder[]
 }
 
 interface TodoItemProps {
@@ -71,7 +82,11 @@ interface TodoItemProps {
   onUpdate: (id: string, text: string) => void;
   onAddTag: (todoId: string, tag: string) => void;
   onRemoveTag: (todoId: string, tag: string) => void; // Add this
+  onUpdateDueDate: (id: string, date: string | undefined) => void; // Add this
   allTags: Set<string>;
+  isCalendarOpen: boolean;
+  onCalendarOpenChange: (isOpen: boolean) => void;
+  onAddReminder: (taskId: string) => void;
 }
 
 interface DetectedTask {
@@ -92,7 +107,17 @@ interface TaskSummary {
   timestamp: string
 }
 
-const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate, onAddTag, onRemoveTag, allTags }) => {
+interface Reminder {
+  id: string
+  taskId: string
+  time: string // ISO string
+  type: 'custom' | '1_hour_before' | '1_day_before' | 'at_due_time'
+  status: 'pending' | 'sent' | 'dismissed' | 'snoozed'
+  lastNotified?: string
+  snoozeUntil?: string
+}
+
+const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, onUpdate, onAddTag, onRemoveTag, onUpdateDueDate, allTags, isCalendarOpen, onCalendarOpenChange, onAddReminder }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
   const [isAddingTag, setIsAddingTag] = useState(false);
@@ -103,6 +128,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   const tagPopupRef = useRef<HTMLDivElement>(null);
   const todoItemRef = useRef<HTMLDivElement>(null);
   const [showAbove, setShowAbove] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   const priorityColors = {
     high: 'bg-red-50 border-red-200 hover:bg-red-100',
@@ -238,6 +264,69 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
     setIsEditing(false);
   };
 
+  const handleCalendarClick = () => {
+    onCalendarOpenChange(!isCalendarOpen)
+  }
+
+  // Add click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isCalendarOpen && 
+        calendarRef.current && 
+        !calendarRef.current.contains(event.target as Node)
+      ) {
+        onCalendarOpenChange(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCalendarOpen, onCalendarOpenChange]);
+
+  useEffect(() => {
+    const positionCalendar = () => {
+      if (calendarRef.current && todoItemRef.current) {
+        const buttonRect = todoItemRef.current.getBoundingClientRect()
+        const calendarRect = calendarRef.current.getBoundingClientRect()
+        const viewportWidth = window.innerWidth
+        const viewportHeight = window.innerHeight
+
+        // Calculate position
+        let top = buttonRect.bottom + 8
+        let left = buttonRect.right - calendarRect.width
+
+        // Ensure calendar stays within viewport
+        if (top + calendarRect.height > viewportHeight) {
+          top = buttonRect.top - calendarRect.height - 8
+        }
+        
+        if (left < 0) {
+          left = 8
+        } else if (left + calendarRect.width > viewportWidth) {
+          left = viewportWidth - calendarRect.width - 8
+        }
+
+        // Apply position
+        calendarRef.current.style.top = `${top}px`
+        calendarRef.current.style.left = `${left}px`
+      }
+    }
+
+    if (isCalendarOpen) {
+      requestAnimationFrame(positionCalendar)
+      window.addEventListener('scroll', positionCalendar, true)
+      window.addEventListener('resize', positionCalendar)
+    }
+
+    return () => {
+      window.removeEventListener('scroll', positionCalendar, true)
+      window.removeEventListener('resize', positionCalendar)
+    }
+  }, [isCalendarOpen])
+
   return (
     <div 
       ref={todoItemRef}
@@ -283,7 +372,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 
           {/* Updated Tags display with better spacing */}
           {todo.tags && todo.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className="flex flex-wrap gap-1 mt-1 mb-2">
               {todo.tags.map((tag) => (
                 <span
                   key={tag}
@@ -304,41 +393,72 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
             </div>
           )}
 
-          {(todo.assignedBy || todo.source) && (
-            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-              {todo.assignedBy && (
-                <div className="flex items-center gap-1">
-                  <UserIcon className="w-3 h-3" />
-                  <span>Assigned by {todo.assignedBy}</span>
-                </div>
-              )}
-              {todo.source && (
-                <div className="flex items-center gap-1">
-                  <Link className="w-3 h-3" />
-                  <span>From {todo.source}</span>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Metadata section with consistent spacing */}
+          <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+            {((todo.assignedBy && todo.assignedBy !== 'unknown') || todo.source) && (
+              <div className="flex items-center gap-2">
+                {todo.assignedBy && todo.assignedBy !== 'unknown' && (
+                  <div className="flex items-center gap-1">
+                    <UserIcon className="w-3 h-3" />
+                    <span>Assigned by {todo.assignedBy}</span>
+                  </div>
+                )}
+                {todo.source && (
+                  <div className="flex items-center gap-1">
+                    <Link className="w-3 h-3" />
+                    <span>From {todo.source}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {todo.dueDate && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                <span>Due {format(new Date(todo.dueDate), 'do MMM')}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-gray-500 hover:text-gray-700 p-1"
-            onClick={() => setIsAddingTag(true)}
-          >
-            <Tag className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-gray-500 hover:text-red-600 p-1"
-            onClick={() => onDelete(todo.id)}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
+        <div className="flex items-center gap-2">
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-gray-500 hover:text-red-600 p-1"
+              onClick={() => onDelete(todo.id)}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          {todo.status !== 'completed' && <div className="flex flex-col gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`flex items-center gap-1 px-2 ${
+                todo.dueDate 
+                  ? 'text-blue-600 dark:text-blue-400' 
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={handleCalendarClick}
+            >
+              <Calendar className="w-4 h-4" />
+              <span className="text-xs">
+                {todo.dueDate ? 'Edit due date' : 'Add due date'}
+              </span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex items-center gap-1 px-2 text-gray-500 hover:text-gray-700"
+              onClick={() => onAddReminder(todo.id)}
+            >
+              <Bell className="w-4 h-4" />
+              <span className="text-xs">
+                Add reminder
+              </span>
+            </Button>
+          </div>}
         </div>
       </div>
 
@@ -395,6 +515,107 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
           )}
         </div>
       )}
+
+      {/* Add due date popup */}
+      {isCalendarOpen && createPortal(
+        <div 
+          ref={calendarRef}
+          className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/50 w-[280px]"
+        >
+          <div className="p-3">
+            <DayPicker
+              mode="single"
+              selected={todo.dueDate ? new Date(todo.dueDate) : undefined}
+              onSelect={(date) => {
+                onUpdateDueDate(todo.id, date ? format(date, 'yyyy-MM-dd') : undefined)
+                onCalendarOpenChange(false)
+              }}
+              showOutsideDays={false}
+              className={cn(
+                "p-0",
+                "dark:bg-gray-800 dark:text-gray-100",
+                // Month navigation and header
+                "[&_.rdp-caption]:flex [&_.rdp-caption]:items-center [&_.rdp-caption]:justify-between [&_.rdp-caption]:mb-2",
+                "[&_.rdp-caption_div]:flex [&_.rdp-caption_div]:items-center [&_.rdp-caption_div]:gap-2",
+                // Navigation buttons
+                "[&_.rdp-nav]:flex [&_.rdp-nav]:items-center [&_.rdp-nav]:gap-1",
+                "[&_.rdp-nav_button]:h-7 [&_.rdp-nav_button]:w-7 [&_.rdp-nav_button]:rounded-md [&_.rdp-nav_button]:transition-colors",
+                "[&_.rdp-nav_button]:hover:bg-gray-100 dark:[&_.rdp-nav_button]:hover:bg-gray-700",
+                "[&_.rdp-nav_button]:active:bg-gray-200 dark:[&_.rdp-nav_button]:active:bg-gray-600",
+                // Table styles
+                "[&_table]:w-full [&_table]:border-collapse",
+                // Weekday header
+                "[&_thead_th]:text-xs [&_thead_th]:font-medium [&_thead_th]:text-gray-500 dark:[&_thead_th]:text-gray-400",
+                // Day cells
+                "[&_td]:p-0 [&_td]:text-center [&_td]:text-sm",
+                // Day buttons
+                "[&_.rdp-button]:h-10 [&_.rdp-button]:w-10 [&_.rdp-button]:rounded-full [&_.rdp-button]:transition-colors",
+                "[&_.rdp-button]:hover:bg-blue-100 dark:[&_.rdp-button]:hover:bg-blue-800/50",
+                "[&_.rdp-button]:focus:bg-blue-100 dark:[&_.rdp-button]:focus:bg-blue-800/50",
+                // Selected day
+                "[&_.rdp-day_button.rdp-day_selected]:bg-blue-600 [&_.rdp-day_button.rdp-day_selected]:text-white",
+                "[&_.rdp-day_button.rdp-day_selected]:hover:bg-blue-700",
+                "[&_.rdp-day_button.rdp-day_selected]:rounded-full",
+                // Today's date style
+                "[&_.rdp-day_today]:font-medium [&_.rdp-day_today]:bg-gray-100/80 dark:[&_.rdp-day_today]:bg-gray-800",
+                "[&_.rdp-day_today]:rounded-full",
+                // Update navigation button colors
+                "[&_.rdp-nav_button]:text-white dark:[&_.rdp-nav_button]:text-gray-100",
+                // Add hover styles for days
+                "[&_.rdp-day_button:hover]:bg-blue-50 dark:[&_.rdp-day_button:hover]:bg-blue-900/25",
+                "[&_.rdp-day_button:hover]:rounded-full",
+                "[&_.rdp-day_button:focus]:bg-blue-50 dark:[&_.rdp-day_button:focus]:bg-blue-900/25",
+                "[&_.rdp-day_button:focus]:rounded-full",
+                "[&_.rdp-day_button]:transition-all duration-200",
+                // More visible hover state
+                "[&_.rdp-day_button:hover]:bg-blue-100 dark:[&_.rdp-day_button:hover]:bg-blue-800/50",
+                "[&_.rdp-day_button:focus]:bg-blue-100 dark:[&_.rdp-day_button:focus]:bg-blue-800/50",
+                // Selected state with matching style
+                "[&_.rdp-day_button.rdp-day_selected]:bg-blue-600",
+                "[&_.rdp-day_button.rdp-day_selected]:hover:bg-blue-700",
+                "[&_.rdp-day_button.rdp-day_selected]:rounded-full",
+                // Today's date style
+                "[&_.rdp-day_today]:font-medium [&_.rdp-day_today]:bg-gray-100/80 dark:[&_.rdp-day_today]:bg-gray-800",
+                "[&_.rdp-day_today]:rounded-full"
+              )}
+              classNames={{
+                caption: "flex items-center justify-between px-1",
+                caption_label: "text-sm font-medium",
+                nav: "flex items-center gap-1",
+                nav_button: "h-7 w-7 inline-flex items-center justify-center rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700",
+                head_cell: "text-xs font-medium text-gray-500 dark:text-gray-400 py-2",
+                button: "hover:bg-blue-100 dark:hover:bg-blue-800/50 rounded-full transition-all duration-200"
+              }}
+            />
+            <div className="flex justify-end gap-2 mt-2 pt-2 border-t dark:border-gray-700">
+              {todo.dueDate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    onUpdateDueDate(todo.id, undefined)
+                    onCalendarOpenChange(false)
+                  }}
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Remove
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onCalendarOpenChange(false)}
+                className="text-gray-600 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+              >
+                <X className="w-4 h-4 mr-1.5" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
@@ -436,7 +657,7 @@ function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProp
                   variant="outline"
                   className="flex-1 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/50"
                 >
-                  <X className="w-4 h-4 mr-2" />
+                  <X className="w-4 h-4 mr-2" />  
                   Decline
                 </Button>
               </div>
@@ -453,9 +674,10 @@ export function Todo() {
   const lastConversationsCheckTime = useRef(0);
   const [todos, setTodos] = useState<Task[]>([]);
   const [newTodo, setNewTodo] = useState("")
-  const { name, handleNameUpdate } = useName(); // Destructure name and handleNameUpdate from the context
+  const { name, handleNameUpdate } = useName();
+  const { reminders } = useReminders();
   const [ userName, setUserName] = useState(name);
-  const nameRef = useRef(name); // Ref to hold the current name
+  const nameRef = useRef(name);
   const [searchQuery, setSearchQuery] = useState("");
   const [inputText, setInputText] = useState("");
 
@@ -480,6 +702,14 @@ export function Todo() {
   const [isCopied, setIsCopied] = useState(false)
   
   const [isInitialized, setIsInitialized] = useState(false)
+
+  const [openCalendarId, setOpenCalendarId] = useState<string | null>(null)
+  const [showReminderModal, setShowReminderModal] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+
+  const pendingReminders = reminders.filter(r => 
+    r.status !== 'dismissed'
+  )
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -561,7 +791,8 @@ export function Todo() {
         sourceId: task.metadata.sourceId,
         tags: task.metadata.tags || [],
         assignedBy: task.metadata.assignedBy || 'unknown',
-        source: task.metadata.source
+        source: task.metadata.source,
+        dueDate: task.metadata.dueDate // Add this field
       }));
       
       // Collect all unique tags from tasks
@@ -806,7 +1037,7 @@ export function Todo() {
           // Check for duplicate screen content
           const isDuplicateScreen = false // await isDuplicateTask(screenContent, screenContent)
           if (!isDuplicateScreen) {
-            let user_prompt = `Name of the User : ${nameRef.current}.\nConversation : ${screenContent}`
+            let user_prompt = `Name of the User : ${nameRef.current.split(' ')[0]}.\nConversation : ${screenContent}`
             const slmTask = await Highlight.inference.getTextPredictionSlm(
               [{role: 'system', content: tasks_system_prompt_slm},
               {role: 'user', content: user_prompt}],
@@ -1140,25 +1371,13 @@ export function Todo() {
     )
 
     if (completedTasks.length === 0) return
-
-    const prompt = `Date Range: ${new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]} to ${new Date().toISOString().split('T')[0]}
-
-Convert these completed tasks from today into natural standup updates:
-
-Tasks:
-${completedTasks.map(task => `- ${task.text}
-  Assigned by: ${task.assignedBy || 'self'}
-  Source: ${task.source || 'manual entry'}
-  Completed: ${new Date(task.lastModified).toLocaleTimeString()}`).join('\n\n')}
-
-Format each as a professional standup bullet point that someone would actually say in a meeting. Each point should clearly indicate the task was completed (use past tense). Focus on the impact and outcome. Include relevant context about who assigned it if it wasn't self-assigned.`
     
     let summaries = []
     for (const task of completedTasks) {
       let summary = ''
       const generator = Highlight.inference.getTextPrediction(
         [{role: 'system', content: 'You are a helpful assistant that converts completed tasks into natural standup updates. Make them sound like something a developer would actually say in a standup when reporting finished work. Use past tense to indicate completion. If the task was assigned by someone else, mention that context. Keep each under 100 characters.'},
-         {role: 'user', content: `Convert this completed task into a natural standup update: "${task.text}" (Assigned by: ${task.assignedBy || 'self'})`}],
+         {role: 'user', content: `Convert this completed task into a natural standup update: "${task.text}"`}],
         {temperature: 0.7}
       )
 
@@ -1199,6 +1418,23 @@ Format each as a professional standup bullet point that someone would actually s
     await Highlight.appStorage.set('taskSummaries', newSummaries)
   }
 
+  const handleUpdateDueDate = async (id: string, date: string | undefined) => {
+    const todo = todos.find(t => t.id === id)
+    if (todo) {
+      await Highlight.vectorDB.updateMetadata(tasksTableName, id, {
+        ...todo,
+        dueDate: date,
+        lastModified: new Date().toISOString()
+      })
+      loadTasks()
+    }
+  }
+
+  const handleAddReminder = (taskId: string) => {
+    setSelectedTaskId(taskId)
+    setShowReminderModal(true)
+  }
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8 flex items-center justify-center">
@@ -1214,7 +1450,10 @@ Format each as a professional standup bullet point that someone would actually s
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8">
       <div className="max-w-6xl mx-auto flex gap-6">
-        <Card className="flex-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10">
+        <Card className={cn(
+          "bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-xl rounded-2xl overflow-hidden border-0 dark:ring-1 dark:ring-white/10",
+          detectedTasks.length === 0 && pendingReminders.length === 0 ? "w-full" : "flex-1"
+        )}>
           {/* Header Section */}
           <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 p-4">
             <div className="flex items-center justify-between mb-2"> {/* Reduced margin */}
@@ -1332,7 +1571,11 @@ Format each as a professional standup bullet point that someone would actually s
                         onUpdate={updateTodo}
                         onAddTag={addTagToTodo}
                         onRemoveTag={removeTagFromTodo}
+                        onUpdateDueDate={handleUpdateDueDate}
                         allTags={allTags}
+                        isCalendarOpen={openCalendarId === todo.id}
+                        onCalendarOpenChange={(isOpen) => setOpenCalendarId(isOpen ? todo.id : null)}
+                        onAddReminder={handleAddReminder}
                       />
                     ))}
                 </div>
@@ -1368,14 +1611,21 @@ Format each as a professional standup bullet point that someone would actually s
                       onDelete={deleteTodo}
                       onUpdate={updateTodo}
                       onAddTag={addTagToTodo}
-                      onRemoveTag={removeTagFromTodo} // Add this
+                      onRemoveTag={removeTagFromTodo}
+                      onUpdateDueDate={handleUpdateDueDate}
                       allTags={allTags}
+                      isCalendarOpen={openCalendarId === todo.id}
+                      onCalendarOpenChange={(isOpen) => setOpenCalendarId(isOpen ? todo.id : null)}
+                      onAddReminder={handleAddReminder}
                     />
-                ))}
+                  ))}
               </CollapsibleContent>
             </Collapsible>
 
-            {todos.some(todo => todo.status === 'completed') && (
+            {todos.some(todo => 
+              todo.status === 'completed' && 
+              new Date(todo.lastModified) >= new Date(new Date().setHours(0,0,0,0))
+            ) && (
               <Card className="mt-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg shadow-md border-0 dark:ring-1 dark:ring-white/10">
                 <div className="p-4 border-b dark:border-gray-800">
                   <div className="flex items-center justify-between">
@@ -1466,12 +1716,28 @@ Format each as a professional standup bullet point that someone would actually s
           </CardContent>
         </Card>
         
-        <DetectedTasksCard 
-          tasks={detectedTasks}
-          onAccept={handleAcceptTask}
-          onDecline={handleDeclineTask}
-        />
+        {(detectedTasks.length > 0 || pendingReminders.length > 0) && (
+          <div className="w-80 space-y-6">
+            <DetectedTasksCard 
+              tasks={detectedTasks}
+              onAccept={handleAcceptTask}
+              onDecline={handleDeclineTask}
+            />
+            <RemindersView />
+          </div>
+        )}
       </div>
+
+      {showReminderModal && selectedTaskId && (
+        <ReminderModal
+          taskId={selectedTaskId}
+          dueDate={todos.find(t => t.id === selectedTaskId)?.dueDate}
+          onClose={() => {
+            setShowReminderModal(false)
+            setSelectedTaskId(null)
+          }}
+        />
+      )}
     </div>
   );
 }
