@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react"
 import { v4 as uuidv4 } from 'uuid'
 import Highlight from "@highlight-ai/app-runtime"
 
-interface Reminder {
+export interface Reminder {
   id: string
   taskId: string
   time: string
@@ -117,15 +117,16 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
   }, [reminders, lastCheckTime, tasks])
 
   // Load tasks from VectorDB
+  const loadTasks = async () => {
+    const allTasks = await Highlight.vectorDB.getAllItems('tasks')
+    const taskMap: Record<string, string> = {}
+    allTasks.forEach(task => {
+      taskMap[task.id] = task.text
+    })
+    setTasks(taskMap)
+  }
+
   useEffect(() => {
-    const loadTasks = async () => {
-      const allTasks = await Highlight.vectorDB.getAllItems('tasks')
-      const taskMap: Record<string, string> = {}
-      allTasks.forEach(task => {
-        taskMap[task.id] = task.text
-      })
-      setTasks(taskMap)
-    }
     loadTasks()
   }, [])
 
@@ -145,7 +146,7 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
       const updatedReminders = [...reminders, newReminder]
       await Highlight.appStorage.set('reminders', updatedReminders)
       setReminders(updatedReminders)
-      console.log('Added reminder:', newReminder) // Debug log
+      await loadTasks() // Reload tasks when adding a new reminder
     } catch (error) {
       console.error('Error adding reminder:', error)
     }
@@ -179,9 +180,17 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
   }
 
   const snoozeReminder = async (id: string, snoozeUntil: string) => {
+    const reminder = reminders.find(r => r.id === id)
+    if (!reminder) return
+
+    // Calculate the new due time by adding 15 minutes to the original time
+    const newDueTime = new Date(reminder.time)
+    newDueTime.setMinutes(newDueTime.getMinutes() + 15)
+
     await updateReminder(id, { 
       status: 'snoozed',
       snoozeUntil,
+      time: newDueTime.toISOString(), // Update the due time
       lastNotified: undefined
     })
   }
