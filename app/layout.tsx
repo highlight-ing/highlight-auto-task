@@ -2,6 +2,8 @@ import { Inter } from "next/font/google";
 import { cn } from '@/lib/utils';
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
+import { NameProvider } from "@/components/providers/NameProvider"
+import { RemindersProvider } from "@/components/providers/RemindersProvider"
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -35,7 +37,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <NameProvider>
+            <RemindersProvider>
+              {children}
+            </RemindersProvider>
+          </NameProvider>
         </ThemeProvider>
       </body>
     </html>
