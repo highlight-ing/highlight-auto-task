@@ -23,11 +23,11 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { 
-  Plus, 
-  Search, 
-  Tag, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  Tag,
+  Trash2,
   AlertCircle,
   ChevronDown,
   MoreVertical,
@@ -144,7 +144,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   };
 
   // Get existing tags once
-  const existingTags = useMemo(() => 
+  const existingTags = useMemo(() =>
     Array.from(allTags).filter(tag => !todo.tags?.includes(tag)),
     [allTags, todo.tags]
   );
@@ -152,7 +152,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   // Update filtered tags when search changes
   useEffect(() => {
     if (newTag.trim()) {
-      const filtered = existingTags.filter(tag => 
+      const filtered = existingTags.filter(tag =>
         tag.toLowerCase().includes(newTag.toLowerCase())
       );
       setFilteredTags(filtered);
@@ -193,8 +193,8 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   // Handle click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (isAddingTag && 
-          tagPopupRef.current && 
+      if (isAddingTag &&
+          tagPopupRef.current &&
           !tagPopupRef.current.contains(e.target as Node)) {
         setIsAddingTag(false);
         setNewTag("");
@@ -244,7 +244,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   };
 
   const handleClick = () => setIsEditing(true);
-  
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEditText(e.target.value);
   };
@@ -272,8 +272,8 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        isCalendarOpen && 
-        calendarRef.current && 
+        isCalendarOpen &&
+        calendarRef.current &&
         !calendarRef.current.contains(event.target as Node)
       ) {
         onCalendarOpenChange(false);
@@ -302,7 +302,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
         if (top + calendarRect.height > viewportHeight) {
           top = buttonRect.top - calendarRect.height - 8
         }
-        
+
         if (left < 0) {
           left = 8
         } else if (left + calendarRect.width > viewportWidth) {
@@ -328,13 +328,13 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
   }, [isCalendarOpen])
 
   return (
-    <div 
+    <div
       ref={todoItemRef}
       className="group relative bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50 p-3.5 transition-all duration-200 hover:shadow-md dark:hover:bg-gray-800/80"
     >
       <div className="flex items-start gap-3">
-        <button 
-          onClick={() => onCheckedChange(todo.id)} 
+        <button
+          onClick={() => onCheckedChange(todo.id)}
           className="flex-shrink-0 mt-1 focus:outline-none"
         >
           {todo.status === 'completed' ? (
@@ -343,7 +343,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
             <Circle className="w-5 h-5 text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" />
           )}
         </button>
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {isEditing ? (
@@ -357,12 +357,12 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
                 autoFocus
               />
             ) : (
-              <span 
+              <span
                 className={`text-base font-medium truncate cursor-pointer ${
-                  todo.status === 'completed' 
-                    ? 'line-through text-gray-400 dark:text-gray-500' 
+                  todo.status === 'completed'
+                    ? 'line-through text-gray-400 dark:text-gray-500'
                     : 'text-gray-900 dark:text-gray-100'
-                }`} 
+                }`}
                 onClick={() => setIsEditing(true)}
               >
                 {todo.text}
@@ -436,8 +436,8 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
               variant="ghost"
               size="sm"
               className={`flex items-center gap-1 px-2 ${
-                todo.dueDate 
-                  ? 'text-blue-600 dark:text-blue-400' 
+                todo.dueDate
+                  ? 'text-blue-600 dark:text-blue-400'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
               onClick={handleCalendarClick}
@@ -464,11 +464,11 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 
       {/* Tag Popup */}
       {isAddingTag && (
-        <div 
+        <div
           ref={tagPopupRef}
           className={`absolute ${
-            showAbove 
-              ? 'bottom-full mb-2' 
+            showAbove
+              ? 'bottom-full mb-2'
               : 'top-full mt-2'
           } right-0 z-10 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/50`}
         >
@@ -484,10 +484,10 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
                 className="text-sm w-48 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
                 autoFocus
               />
-              <Button 
-                type="submit" 
-                size="sm" 
-                variant="ghost" 
+              <Button
+                type="submit"
+                size="sm"
+                variant="ghost"
                 className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
               >
                 Add
@@ -497,7 +497,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 
           {/* Existing Tags Dropdown */}
           {filteredTags.length > 0 && (
-            <div 
+            <div
               ref={dropdownRef}
               className="border-t dark:border-gray-700 overflow-y-auto p-1"
             >
@@ -518,7 +518,7 @@ const TodoItem: React.FC<TodoItemProps> = ({ todo, onCheckedChange, onDelete, on
 
       {/* Add due date popup */}
       {isCalendarOpen && createPortal(
-        <div 
+        <div
           ref={calendarRef}
           className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg dark:shadow-gray-900/50 w-[280px]"
         >
@@ -657,7 +657,7 @@ function DetectedTasksCard({ tasks, onAccept, onDecline }: DetectedTasksCardProp
                   variant="outline"
                   className="flex-1 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/50"
                 >
-                  <X className="w-4 h-4 mr-2" />  
+                  <X className="w-4 h-4 mr-2" />
                   Decline
                 </Button>
               </div>
@@ -696,18 +696,18 @@ export function Todo() {
   const [activeTag, setActiveTag] = useState<string>("all");
   const [isAddingTag, setIsAddingTag] = useState<{todoId: string; isOpen: boolean}>({ todoId: '', isOpen: false });
   const { theme, setTheme } = useTheme()
-  
+
   const [detectedTasks, setDetectedTasks] = useState<DetectedTask[]>([])
   const [taskSummaries, setTaskSummaries] = useState<TaskSummary[]>([])
   const [isCopied, setIsCopied] = useState(false)
-  
+
   const [isInitialized, setIsInitialized] = useState(false)
 
   const [openCalendarId, setOpenCalendarId] = useState<string | null>(null)
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
 
-  const pendingReminders = reminders.filter(r => 
+  const pendingReminders = reminders.filter(r =>
     r.status !== 'dismissed'
   )
 
@@ -716,18 +716,18 @@ export function Todo() {
       try {
         // Load initial data
         await loadTasks()
-        
+
         // Initialize name from storage if exists
         const savedName = await Highlight.appStorage.get('userName')
         if (savedName) {
           handleNameUpdate(savedName)
           nameRef.current = savedName
         }
-        
+
         // Initialize help section state
         const helpSectionState = await Highlight.appStorage.get("showHelpSection")
         setShowHelpSection(helpSectionState ?? true)
-        
+
         setIsInitialized(true)
       } catch (error) {
         console.error('Failed to initialize app:', error)
@@ -794,7 +794,7 @@ export function Todo() {
         source: task.metadata.source,
         dueDate: task.metadata.dueDate // Add this field
       }));
-      
+
       // Collect all unique tags from tasks
       const tagsSet = new Set<string>();
       taskObjects.forEach(task => {
@@ -802,7 +802,7 @@ export function Todo() {
           task.tags.forEach((tag: string) => tagsSet.add(tag.toLowerCase()));
         }
       });
-      
+
       setTodos(taskObjects);
       setAllTags(tagsSet); // Update allTags with collected tags
     } catch (error) {
@@ -815,10 +815,10 @@ export function Todo() {
       const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName);
       const pendingTasks = tasks
         .filter(task => task.metadata.status === 'pending');
-      
+
       // Only update state if there are pending tasks
       if (pendingTasks.length > 0) {
-        setDetectedTasks(pendingTasks); 
+        setDetectedTasks(pendingTasks);
         console.log("Loaded pending detected tasks:", pendingTasks);
       }
     } catch (error) {
@@ -873,7 +873,7 @@ export function Todo() {
           console.log("Task already completed with similar source - marking as duplicate");
           return true;
         }
-        
+
         // Case 2: Task is completed/deleted but source is different - allow new task creation
         if ((metadata.status === 'completed' || metadata.status === 'deleted') && similarity <= 0.85) {
           console.log("Task was completed but has new source - allowing new task creation");
@@ -894,7 +894,7 @@ export function Todo() {
 
   const addTask = async (task: DetectedTask) => {
       await Highlight.vectorDB.insertItem(tasksTableName, task.text, task.metadata);
-      
+
     if (task.metadata.status === 'pending') {
       loadTasks();
     }
@@ -994,8 +994,6 @@ export function Todo() {
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
       const now = Date.now()
       if (now - lastAppsCheckTime.current >= 15000) {
-        lastAppsCheckTime.current = now
-
         console.log("Starting periodic apps check...")
 
         // Handle apps flow first
@@ -1009,7 +1007,7 @@ export function Todo() {
           "telegram.org",
           "WhatsApp",
           "web.whatsapp.com",
-          
+
           // Email Apps
           "Outlook",
           "outlook.office.com",
@@ -1020,10 +1018,11 @@ export function Todo() {
           "mail.proton.me",
           "Thunderbird"
         ]
-        if (supportedApps.some(app => 
-          context.appName === app || 
+        if (supportedApps.some(app =>
+          context.appName === app ||
           (context.url && context.url.includes(app))
         )) {
+          lastAppsCheckTime.current = now
           console.log("Processing supported app:", context.appName || context.url)
           const userContext = await Highlight.user.getContext(true)
           const screenContent = userContext.environment.ocrScreenContents ?? ""
@@ -1047,7 +1046,7 @@ export function Todo() {
             if (slmTask.startsWith("Task assigned : ")) {
               const slmTaskText = slmTask.replace("Task assigned : ", "")
               console.log("SLM found potential task:", slmTaskText)
-              
+
               const isDuplicateSlmTask = await isDuplicateTask(slmTaskText, user_prompt)
               if (!isDuplicateSlmTask) {
                 console.log("Running LLM verification...")
@@ -1056,12 +1055,12 @@ export function Todo() {
                   [{role: 'system', content: tasks_system_prompt_llm},
                   {role: 'user', content: user_prompt}]
                 )
-                
+
                 let llmTask = ''
                 for await (const part of generator) {
                   llmTask += part
                 }
-                
+
                 if (llmTask.includes("Task assigned : ")) {
                   let llmTaskText = llmTask.replace(/Task assigned\s*:\s*/, "")
                   const llmAssignedBy = llmTaskText.split(" Assigned by ")[1].replace(',', '').trim()
@@ -1070,7 +1069,7 @@ export function Todo() {
                     console.log("LLM task assigned to self, skipping addition")
                     return
                   }
-                  
+
                   const isDuplicateLlmTask = await isDuplicateTask(llmTaskText, user_prompt)
                   if (!isDuplicateLlmTask) {
                     await storeDetectedTask(llmTaskText, llmAssignedBy, user_prompt, context.appName || new URL(context.url || '').hostname)
@@ -1101,7 +1100,7 @@ export function Todo() {
         const timeframe = new Date(now - 30 * 60 * 1000)
         const conversations = await Highlight.conversations.getAllConversations()
 
-        const recentConversations = conversations.filter(conv => 
+        const recentConversations = conversations.filter(conv =>
           new Date(conv.endedAt) > timeframe
         )
         if (recentConversations.length > 0) {
@@ -1177,7 +1176,7 @@ export function Todo() {
             } else if (user_llmTask.includes("Task assigned : ")) {
               const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
               console.log("LLM found potential task from conversations:", taskText)
-              
+
               const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
               if (!isDuplicateLlmTask) {
                 await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
@@ -1196,7 +1195,7 @@ export function Todo() {
     }
 
     let removeListener = Highlight.app.addListener(
-      "onPeriodicForegroundAppCheck", 
+      "onPeriodicForegroundAppCheck",
       onPeriodicForegroundAppCheck
     )
 
@@ -1236,16 +1235,16 @@ export function Todo() {
   const toggleTodo = async (id: string) => {
     const todo = todos.find(todo => todo.id === id)
     const newStatus = todo?.status === 'completed' ? 'pending' : 'completed'
-    
+
     // Clear summaries regardless of the new status
     await clearSummaries()
-    
+
     await Highlight.vectorDB.updateMetadata(tasksTableName, id, {
       ...todo,
       status: newStatus,
       lastModified: new Date().toISOString(),
     })
-    
+
     loadTasks()
   }
 
@@ -1297,7 +1296,7 @@ export function Todo() {
           lastModified: new Date().toISOString()
         });
         loadTasks();
-        
+
         // Update allTags
         setAllTags(prev => new Set([...Array.from(prev), tag.toLowerCase()]));
       }
@@ -1314,24 +1313,24 @@ export function Todo() {
         tags: newTags,
         lastModified: new Date().toISOString()
       });
-      
+
       // Check if this tag is used by any other todos
-      const isTagUsedElsewhere = todos.some(t => 
+      const isTagUsedElsewhere = todos.some(t =>
         t.id !== todoId && t.tags && t.tags.includes(tagToRemove)
       );
-      
+
       // If tag is not used elsewhere, remove it from allTags
       if (!isTagUsedElsewhere) {
         const updatedTags = new Set(allTags);
         updatedTags.delete(tagToRemove);
         setAllTags(updatedTags);
-        
+
         // If the removed tag was active, switch to 'all'
         if (activeTag === tagToRemove) {
           setActiveTag('all');
         }
       }
-      
+
       loadTasks();
     }
   };
@@ -1340,7 +1339,7 @@ export function Todo() {
   const filteredTodos = todos
     .filter(todo => {
       const matchesTag = activeTag === "all" || (todo.tags && todo.tags.includes(activeTag));
-      const matchesSearch = searchQuery 
+      const matchesSearch = searchQuery
         ? todo.text.toLowerCase().includes(searchQuery.toLowerCase())
         : true;
       return matchesTag && matchesSearch;
@@ -1360,18 +1359,18 @@ export function Todo() {
   const generateTaskSummary = async () => {
     // Clear existing summaries before generating new ones
     await clearSummaries()
-    
+
     // Get today's completed tasks
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
-    
-    const completedTasks = todos.filter(todo => 
+
+    const completedTasks = todos.filter(todo =>
       todo.status === 'completed' &&
       new Date(todo.lastModified) >= todayStart
     )
 
     if (completedTasks.length === 0) return
-    
+
     let summaries = []
     for (const task of completedTasks) {
       let summary = ''
@@ -1391,7 +1390,7 @@ export function Todo() {
         timestamp: new Date().toISOString()
       })
     }
-    
+
     setTaskSummaries(summaries)
     await Highlight.appStorage.set('taskSummaries', summaries)
   }
@@ -1400,7 +1399,7 @@ export function Todo() {
     const summaryText = taskSummaries
       .map(s => `• ${s.summary}`)
       .join('\n')
-    
+
     navigator.clipboard.writeText(summaryText)
     setIsCopied(true)
     setTimeout(() => setIsCopied(false), 2000)
@@ -1506,8 +1505,8 @@ export function Todo() {
                   className="w-full pl-10 dark:bg-gray-800 dark:border-gray-700"
                 />
               </div>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -1588,14 +1587,14 @@ export function Todo() {
               onOpenChange={setShowCompletedTodos}
               className="mt-4"
             >
-              <CollapsibleTrigger 
+              <CollapsibleTrigger
                 className="flex items-center justify-between w-full p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors duration-200 dark:text-gray-300"
               >
                 <span className="flex items-center gap-2">
-                  <ChevronDown 
+                  <ChevronDown
                     className={`w-4 h-4 transition-transform ${
                       showCompletedTodos ? 'rotate-180' : ''
-                    }`} 
+                    }`}
                   />
                   {showCompletedTodos ? 'Hide' : 'Show'} Completed Tasks
                 </span>
@@ -1622,8 +1621,8 @@ export function Todo() {
               </CollapsibleContent>
             </Collapsible>
 
-            {todos.some(todo => 
-              todo.status === 'completed' && 
+            {todos.some(todo =>
+              todo.status === 'completed' &&
               new Date(todo.lastModified) >= new Date(new Date().setHours(0,0,0,0))
             ) && (
               <Card className="mt-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg shadow-md border-0 dark:ring-1 dark:ring-white/10">
@@ -1673,7 +1672,7 @@ export function Todo() {
                   {taskSummaries.length > 0 ? (
                     <div className="space-y-3 mt-2">
                       {taskSummaries.map((summary) => (
-                        <div 
+                        <div
                           key={summary.taskId}
                           className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-200 bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700/50"
                         >
@@ -1682,16 +1681,16 @@ export function Todo() {
                         </div>
                       ))}
                       {/* Update notification styling */}
-                      {todos.filter(t => 
-                        t.status === 'completed' && 
+                      {todos.filter(t =>
+                        t.status === 'completed' &&
                         new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
                         !taskSummaries.some(s => s.taskId === t.id)
                       ).length > 0 && (
                         <div className="mt-4 text-sm text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 rounded-lg p-3.5 flex items-center gap-2">
                           <AlertCircle className="w-4 h-4" />
                           <span>
-                            {todos.filter(t => 
-                              t.status === 'completed' && 
+                            {todos.filter(t =>
+                              t.status === 'completed' &&
                               new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0)) &&
                               !taskSummaries.some(s => s.taskId === t.id)
                             ).length} new tasks completed. Click &quot;Generate Summary&quot; to update.
@@ -1703,8 +1702,8 @@ export function Todo() {
                     <div className="text-sm text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800/50 rounded-lg p-4 my-2 flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
                       <span>
-                        {todos.filter(t => 
-                          t.status === 'completed' && 
+                        {todos.filter(t =>
+                          t.status === 'completed' &&
                           new Date(t.lastModified) >= new Date(new Date().setHours(0,0,0,0))
                         ).length} tasks completed today. Click &quot;Generate Summary&quot; to create an update.
                       </span>
@@ -1715,10 +1714,10 @@ export function Todo() {
             )}
           </CardContent>
         </Card>
-        
+
         {(detectedTasks.length > 0 || pendingReminders.length > 0) && (
           <div className="w-80 space-y-6">
-            <DetectedTasksCard 
+            <DetectedTasksCard
               tasks={detectedTasks}
               onAccept={handleAcceptTask}
               onDecline={handleDeclineTask}
