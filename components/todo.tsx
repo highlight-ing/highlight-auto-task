@@ -993,7 +993,7 @@ export function Todo() {
 
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
       const now = Date.now()
-      if (now - lastAppsCheckTime.current >= 15000) {
+      if (now - lastAppsCheckTime.current >= 10000) {
         console.log("Starting periodic apps check...")
 
         // Handle apps flow first
