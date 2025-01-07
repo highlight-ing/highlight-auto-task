@@ -40,7 +40,8 @@ import {
   Link,
   Copy,
   Calendar,
-  Bell
+  Bell,
+  Settings
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
@@ -711,6 +712,8 @@ export function Todo() {
     r.status !== 'dismissed'
   )
 
+  const [privacyChoice, setPrivacyChoice] = useState<'agree' | 'disagree' | null>(null)
+
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -768,12 +771,16 @@ export function Todo() {
     getHotKey();
   }, []);
 
-  const handleUserNameEdit = () => {
-    setIsEditingName(true)
-  }
-  const handleUserNameSave = (newName: string) => {
-    handleNameUpdate(newName)
-    setIsEditingName(false)
+  useEffect(() => {
+    const loadPrivacyChoice = async () => {
+      const choice = await Highlight.appStorage.get('privacyChoice')
+      setPrivacyChoice(choice)
+    }
+    loadPrivacyChoice()
+  }, [])
+
+  const handleSettingsClick = () => {
+    window.location.href = '/?settings=true'
   }
 
   // Load tasks from the VectorDB
@@ -814,12 +821,22 @@ export function Todo() {
     try {
       const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName);
       const pendingTasks = tasks
-        .filter(task => task.metadata.status === 'pending');
+        .filter(task => task.metadata.status === 'pending')
+        .map(task => ({
+          id: task.id,
+          metadata: task.metadata,
+          text: task.text
+        }));
 
-      // Only update state if there are pending tasks
-      if (pendingTasks.length > 0) {
+      // Only update state if there's a difference in tasks
+      const currentIds = new Set(detectedTasks.map(t => t.id));
+      const newIds = new Set(pendingTasks.map(t => t.id));
+
+      if (pendingTasks.length !== detectedTasks.length ||
+          !pendingTasks.every(t => currentIds.has(t.id)) ||
+          !detectedTasks.every(t => newIds.has(t.id))) {
         setDetectedTasks(pendingTasks);
-        console.log("Loaded pending detected tasks:", pendingTasks);
+        // console.log("Updated detected tasks:", pendingTasks);
       }
     } catch (error) {
       console.error("Failed to load detected tasks:", error);
@@ -900,25 +917,26 @@ export function Todo() {
     }
   }
 
-  const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string, appSource?: string) => {
+  const storeDetectedTask = async (taskText: string, assignedBy: string, userPrompt: string, appSource: string) => {
     try {
       const sanitizedText = taskText.replace(/["]/g, '')
       const sourceId = uuidv4()
       await Highlight.vectorDB.insertItem(sourcesTableName, userPrompt, { sourceId })
-      await Highlight.vectorDB.insertItem(detectedTasksTableName, sanitizedText, {
+
+      const metadata = {
         status: 'pending',
         additionMethod: 'automatically',
         lastModified: new Date().toISOString(),
         sourceId,
         assignedBy,
         source: appSource
-      })
+      }
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await Highlight.vectorDB.insertItem(detectedTasksTableName, sanitizedText, metadata)
 
-      // Get the task ID from the DB
+      // Get the task ID from the DB immediately after insertion
       const tasks = await Highlight.vectorDB.getAllItems(detectedTasksTableName)
-      const task = tasks.find(t => t.text === sanitizedText)
+      const task = tasks.find(t => t.text === sanitizedText && t.metadata.sourceId === sourceId)
       if (!task) throw new Error(`Failed to find newly created task : ${sanitizedText}`)
 
       const newTask: DetectedTask = {
@@ -1002,6 +1020,9 @@ export function Todo() {
     if (!isInitialized) return
 
     const onPeriodicForegroundAppCheck = async (context: FocusedWindow) => {
+      // If automatic features are disabled, don't run the checks
+      if (privacyChoice === 'disagree') return
+
       const now = Date.now()
       if (now - lastAppsCheckTime.current >= 10000) {
         console.log("Starting periodic apps check...")
@@ -1204,15 +1225,22 @@ export function Todo() {
       }
     }
 
-    let removeListener = Highlight.app.addListener(
-      "onPeriodicForegroundAppCheck",
-      onPeriodicForegroundAppCheck
-    )
+    let removeListener: (() => void) | undefined
+
+    // Only add the listener if automatic features are enabled
+    if (privacyChoice === 'agree') {
+      removeListener = Highlight.app.addListener(
+        "onPeriodicForegroundAppCheck",
+        onPeriodicForegroundAppCheck
+      )
+    }
 
     return () => {
-      removeListener()
+      if (removeListener) {
+        removeListener()
+      }
     }
-  }, [isInitialized])
+  }, [isInitialized, privacyChoice]) // Add privacyChoice to dependencies
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
@@ -1445,6 +1473,19 @@ export function Todo() {
     setShowReminderModal(true)
   }
 
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Set up periodic refresh of detected tasks
+    const refreshInterval = setInterval(() => {
+      loadDetectedTasks();
+    }, 5000); // Refresh every 5 seconds
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [isInitialized]);
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-8 flex items-center justify-center">
@@ -1492,16 +1533,29 @@ export function Todo() {
                   </button>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              >
-                <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                <span className="sr-only">Toggle theme</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                {privacyChoice === 'disagree' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSettingsClick}
+                    className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/50"
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Enable Automatic Tasks
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                >
+                  <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                  <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                  <span className="sr-only">Toggle theme</span>
+                </Button>
+              </div>
             </div>
 
             {/* Search/Add Task form */}

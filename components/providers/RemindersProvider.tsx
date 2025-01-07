@@ -71,21 +71,21 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now()
       if (now - lastCheckTime >= 60000) { // Check every minute
         setLastCheckTime(now)
-        
+
         const updatedReminders = [...reminders]
         let hasUpdates = false
 
         for (const reminder of reminders) {
           // Skip dismissed reminders
           if (reminder.status === 'dismissed') continue
-          
+
           // For snoozed reminders, check against snoozeUntil time
           if (reminder.status === 'snoozed') {
             if (!reminder.snoozeUntil || new Date(reminder.snoozeUntil) > new Date()) {
               continue
             }
           }
-          
+
           const dueTime = new Date(reminder.time).getTime()
           if (dueTime <= now && (!reminder.lastNotified || new Date(reminder.lastNotified).getTime() < dueTime)) {
             // Show notification
@@ -164,7 +164,7 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
 
   const updateReminder = async (id: string, updates: Partial<Reminder>) => {
     try {
-      const updatedReminders = reminders.map(r => 
+      const updatedReminders = reminders.map(r =>
         r.id === id ? { ...r, ...updates } : r
       )
       await Highlight.appStorage.set('reminders', updatedReminders)
@@ -187,7 +187,7 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
     const newDueTime = new Date(reminder.time)
     newDueTime.setMinutes(newDueTime.getMinutes() + 15)
 
-    await updateReminder(id, { 
+    await updateReminder(id, {
       status: 'snoozed',
       snoozeUntil,
       time: newDueTime.toISOString(), // Update the due time
@@ -216,4 +216,4 @@ export const useReminders = () => {
     throw new Error('useReminders must be used within a RemindersProvider')
   }
   return context
-} 
+}
