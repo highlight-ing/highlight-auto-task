@@ -84,7 +84,7 @@ export function PrivacyScreen() {
               <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
               <div className="space-y-2">
                 <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  This differs from Highlight's base privacy policy. While your data is stored locally, the content is sent to cloud AI models for processing.
+                  This differs from Highlight&apos;s base privacy policy. While your data is stored locally, the content is sent to cloud AI models for processing.
                 </p>
                 <p className="text-sm text-yellow-800 dark:text-yellow-200">
                   You can still use the basic features without enabling automatic detection if you prefer not to share content with our AI models.

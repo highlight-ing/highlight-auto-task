@@ -35,12 +35,12 @@ export function NameInputScreen() {
               <UserCircle2 className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              What's your name?
+              What&apos;s your name?
             </h1>
           </div>
 
           <p className="text-lg text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">
-            We'll use this to personalize your experience and detect tasks assigned to you in conversations and applications.
+            We&apos;ll use this to personalize your experience and detect tasks assigned to you in conversations and applications.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
