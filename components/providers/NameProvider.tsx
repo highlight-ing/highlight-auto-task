@@ -1,48 +1,46 @@
 "use client"
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from "react";
-import Highlight from "@highlight-ai/app-runtime";
+import { createContext, useContext, useEffect, useState } from "react"
+import Highlight from "@highlight-ai/app-runtime"
 
-// Define the shape of the context's value
-interface NameContextType {
-  name: string;
-  handleNameUpdate: (newName: string) => void;
+type NameContextType = {
+  name: string
+  handleNameUpdate: (newName: string) => Promise<void>
+  isValidName: boolean
 }
 
-// Create the context
-const NameContext = createContext<NameContextType | undefined>(undefined);
+const NameContext = createContext<NameContextType>({
+  name: "",
+  handleNameUpdate: async () => {},
+  isValidName: false
+})
 
-// Create the provider component
-export function NameProvider({ children }: { children: ReactNode }) {
-  const [name, setName] = useState("User");
+export function NameProvider({ children }: { children: React.ReactNode }) {
+  const [name, setName] = useState("")
+  const [isValidName, setIsValidName] = useState(false)
 
   useEffect(() => {
     const loadName = async () => {
-      const savedName = await Highlight.appStorage.get('userName');
+      const savedName = await Highlight.appStorage.get("userName")
       if (savedName) {
-        setName(savedName);
+        setName(savedName)
+        setIsValidName(savedName.toLowerCase() !== 'user')
       }
-    };
-    loadName();
-  }, []);
+    }
+    loadName()
+  }, [])
 
   const handleNameUpdate = async (newName: string) => {
-    setName(newName);
-    await Highlight.appStorage.set('userName', newName);
-  };
+    await Highlight.appStorage.set("userName", newName)
+    setName(newName)
+    setIsValidName(newName.toLowerCase() !== 'user')
+  }
 
   return (
-    <NameContext.Provider value={{ name, handleNameUpdate }}>
+    <NameContext.Provider value={{ name, handleNameUpdate, isValidName }}>
       {children}
     </NameContext.Provider>
-  );
+  )
 }
 
-// Create the hook to use the context
-export const useName = () => {
-  const context = useContext(NameContext);
-  if (context === undefined) {
-    throw new Error('useName must be used within a NameProvider');
-  }
-  return context;
-};
+export const useName = () => useContext(NameContext)

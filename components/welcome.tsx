@@ -96,7 +96,7 @@ export function Welcome() {
                       We need to know your name for detecting the tasks meant for you.
                     </p>
                   </div>
-                  
+
                   <Input
                     id="name"
                     type="text"
