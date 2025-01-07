@@ -930,6 +930,9 @@ export function Todo() {
       setDetectedTasks(prev => [...prev, newTask])
       console.log("Task shown on UI :", newTask)
       await Highlight.app.showNotification('New task detected:', task.text);
+      await Highlight.reporting.trackEvent('Task Detected', {
+        source: appSource
+      })
     } catch (error) {
       console.error("Failed to store detected task:", error)
       return null
@@ -946,6 +949,9 @@ export function Todo() {
       status: 'accepted',
     })
     setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
+    await Highlight.reporting.trackEvent('Task Accepted', {
+      source: task.metadata.source
+    })
   }
 
   const handleDeclineTask = async (task: DetectedTask) => {
@@ -957,6 +963,9 @@ export function Todo() {
       status: 'declined',
     })
     setDetectedTasks(prev => prev.filter(t => t.id !== task.id))
+    await Highlight.reporting.trackEvent('Task Declined', {
+      source: task.metadata.source
+    })
   }
 
   // Helper function to calculate cosine similarity
@@ -975,6 +984,7 @@ export function Todo() {
           metadata: { status: 'pending', additionMethod: 'semi_automatically' },
           text: context.suggestion
         })
+        await Highlight.reporting.trackEvent('Task Added Semi-Automatically')
       }
     })
 
@@ -1218,6 +1228,7 @@ export function Todo() {
         metadata: { status: 'pending', additionMethod: 'manually', source: 'Manual Entry', assignedBy: nameRef.current },
         text: inputText
       });
+      await Highlight.reporting.trackEvent('Task Added Manually')
       setInputText(""); // Clear input after adding task
       setSearchQuery(""); // Clear search query
     }
