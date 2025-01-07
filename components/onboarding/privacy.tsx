@@ -19,6 +19,12 @@ export function PrivacyScreen() {
         })
       }
 
+      if (Highlight.reporting?.trackEvent) {
+        await Highlight.reporting.trackEvent('Privacy Choice', {
+          choice: choice
+        })
+      }
+
       const url = new URL(window.location.href)
       url.searchParams.delete('settings')
       window.history.replaceState({}, '', url.toString())
