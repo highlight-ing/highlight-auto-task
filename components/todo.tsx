@@ -44,7 +44,7 @@ import {
   Settings
 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import Highlight, { type HighlightContext, type FocusedWindow } from "@highlight-ai/app-runtime";
+import Highlight, { type HighlightContext, type FocusedWindow, type ConversationData } from "@highlight-ai/app-runtime";
 import { useName } from './providers/NameProvider'; // Adjust the path based on where you save the context
 import { v4 as uuidv4 } from 'uuid';
 import { tasks_system_prompt_slm, tasks_system_prompt_llm, conversations_system_prompt, overall_conversations_system_prompt } from './prompts';
@@ -1122,107 +1122,6 @@ export function Todo() {
         }
         console.log("Periodic check for apps completed")
       }
-
-      if (now - lastConversationsCheckTime.current >= 300000) {
-        lastConversationsCheckTime.current = now
-
-        console.log("Starting periodic conversations check...")
-
-        const timeframe = new Date(now - 30 * 60 * 1000)
-        const conversations = await Highlight.conversations.getAllConversations()
-
-        const recentConversations = conversations.filter(conv =>
-          new Date(conv.endedAt) > timeframe
-        )
-        if (recentConversations.length > 0) {
-          const recentTranscripts = recentConversations
-            .slice(0, 2)
-            .map((conv, index) => `Transcript ${index + 1}:\n${conv.transcript}`)
-            .join("\n\n---\n\n")
-
-          // Check if conversation is one-sided
-          const selfCount = (recentTranscripts.match(/self:/gi) || []).length
-          // change other to other(s):
-          const otherCount = (recentTranscripts.match(/other\(s\):/gi) || []).length
-
-          // If only self messages or no messages at all, skip processing
-          if (selfCount > 0 && otherCount === 0) {
-            console.log("Skipping one-sided conversation")
-            return
-          }
-
-          // globally replace 'self:' with 'nameRef.current:'
-          // let modifiedTranscripts = recentTranscripts.replace(/self:\s*/gi, `${nameRef.current.split(' ')[0]}: `)
-          // let modifiedTranscripts = recentTranscripts.replace(/other\(s\):/gi, `${nameRef.current.split(' ')[0]}: `)
-
-          // console.log("Recent recentTranscripts:", modifiedTranscripts)
-
-          const isDuplicateInput = false //await isDuplicateTask(recentTranscripts, recentTranscripts)
-          if (!isDuplicateInput) {
-            const conversations_prompt = [
-              `Name of the User: ${nameRef.current}`,
-              `Recent Conversations: ${recentTranscripts}`
-            ].join("\n")
-
-            console.log("Running LLM for conversations for user: ", nameRef.current)
-            const user_generator = Highlight.inference.getTextPrediction(
-              [{role: 'system', content: conversations_system_prompt},
-              {role: 'user', content: conversations_prompt}],
-              {temperature: 0.5}
-            )
-
-            let user_llmTask = ''
-            for await (const part of user_generator) {
-              user_llmTask += part
-            }
-
-            console.log("User Conversations LLM task:", user_llmTask)
-
-            if (user_llmTask.startsWith('[') && user_llmTask.endsWith(']')) {
-              try {
-
-                const tasks = user_llmTask
-                  .slice(1, -1)
-                  .split('",')
-                  .map(task => task.replace(/^"|"$/g, '').trim())
-
-                console.log("Tasks:", tasks)
-
-                for (const task of tasks) {
-                  if (task.includes("Task assigned : ")) {
-                    const taskText = task.replace(/Task assigned\s*:\s*/, "").trim()
-                    console.log("LLM found potential task from conversations:", taskText)
-
-                    const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
-                    if (!isDuplicateLlmTask) {
-                      await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
-                    } else {
-                      console.log("Duplicate task detected from conversations, skipping addition")
-                    }
-                  }
-                }
-              } catch (error) {
-                console.error("Failed to parse tasks array:", error)
-              }
-            } else if (user_llmTask.includes("Task assigned : ")) {
-              const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
-              console.log("LLM found potential task from conversations:", taskText)
-
-              const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
-              if (!isDuplicateLlmTask) {
-                await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
-              } else {
-                console.log("Duplicate task detected from conversations, skipping addition")
-              }
-            } else {
-              console.log("No task found in conversations")
-            }
-          } else {
-            console.log("Duplicate conversation detected, skipping LLM call")
-          }
-        }
-        console.log("Periodic check for conversations completed")
-      }
     }
 
     let removeListener: (() => void) | undefined
@@ -1241,6 +1140,96 @@ export function Todo() {
       }
     }
   }, [isInitialized, privacyChoice]) // Add privacyChoice to dependencies
+
+  useEffect(() => {
+    if (!isInitialized) return
+
+    const onConversationSaved = async (conversation: ConversationData) => {
+      const recentTranscripts = conversation.transcript
+
+      // // Check if conversation is one-sided
+      // const selfCount = (recentTranscripts.match(/self:/gi) || []).length
+      // // change other to other(s):
+      // const otherCount = (recentTranscripts.match(/other\(s\):/gi) || []).length
+
+      // // If only self messages or no messages at all, skip processing
+      // if (selfCount > 0 && otherCount === 0) {
+      //   console.log("Skipping one-sided conversation")
+      //   return
+      // }
+
+      const conversations_prompt = [
+        `Name of the User: ${nameRef.current}`,
+        `Recent Conversations: ${recentTranscripts}`
+      ].join("\n")
+
+      console.log("Running LLM for conversations for user: ", nameRef.current)
+      const user_generator = Highlight.inference.getTextPrediction(
+        [{role: 'system', content: conversations_system_prompt},
+        {role: 'user', content: conversations_prompt}],
+        {temperature: 0.5}
+      )
+
+      let user_llmTask = ''
+      for await (const part of user_generator) {
+        user_llmTask += part
+      }
+
+      console.log("User Conversations LLM task:", user_llmTask)
+
+      if (user_llmTask.startsWith('[') && user_llmTask.endsWith(']')) {
+        try {
+
+          const tasks = user_llmTask
+            .slice(1, -1)
+            .split('",')
+            .map(task => task.replace(/^"|"$/g, '').trim())
+
+          console.log("Tasks:", tasks)
+
+          for (const task of tasks) {
+            if (task.includes("Task assigned : ")) {
+              const taskText = task.replace(/Task assigned\s*:\s*/, "").trim()
+              console.log("LLM found potential task from conversations:", taskText)
+
+              const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
+              if (!isDuplicateLlmTask) {
+                await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
+              } else {
+                console.log("Duplicate task detected from conversations, skipping addition")
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to parse tasks array:", error)
+        }
+      } else if (user_llmTask.includes("Task assigned : ")) {
+        const taskText = user_llmTask.replace(/Task assigned\s*:\s*/, "")
+        console.log("LLM found potential task from conversations:", taskText)
+
+        const isDuplicateLlmTask = await isDuplicateTask(taskText, 'conversations')
+        if (!isDuplicateLlmTask) {
+          await storeDetectedTask(taskText, "unknown", 'conversations', "Meeting")
+        } else {
+          console.log("Duplicate task detected from conversations, skipping addition")
+        }
+      } else {
+        console.log("No task found in conversations")
+      }
+    }
+
+    let removeListener: (() => void) | undefined
+
+    if (privacyChoice === 'agree') {
+      removeListener = Highlight.app.addListener('onConversationSaved', onConversationSaved)
+    }
+
+    return () => {
+      if (removeListener) {
+        removeListener()
+      }
+    }
+  }, [isInitialized, privacyChoice])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
