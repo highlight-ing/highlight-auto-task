@@ -1548,7 +1548,7 @@ export function Todo() {
             </div>
 
             {/* Search/Add Task form */}
-            <form onSubmit={handleNewTaskSubmit} className="flex items-center gap-4 mt-3"> {/* Reduced margin */}
+            <form onSubmit={handleNewTaskSubmit} className="flex items-center gap-4 mt-3">
               <div className="flex-1 relative">
                 <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                 <Input
@@ -1561,7 +1561,13 @@ export function Todo() {
               </div>
               <Button
                 type="submit"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white"
+                disabled={!inputText.trim()}
+                className={cn(
+                  "bg-gradient-to-r from-blue-600 to-purple-600 text-white",
+                  inputText.trim()
+                    ? "hover:opacity-90"
+                    : "opacity-50 cursor-not-allowed hover:opacity-50"
+                )}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Task
